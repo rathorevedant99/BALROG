@@ -8,6 +8,8 @@ from .few_shot import FewShotAgent
 from .naive import NaiveAgent
 from .robust_naive import RobustNaiveAgent
 from .robust_cot import RobustCoTAgent
+from .naive_rag import NaiveRAGAgent
+from .utils.rag import RAG, parse_txt, parse_xml
 
 
 class AgentFactory:
@@ -41,6 +43,10 @@ class AgentFactory:
         """
         client_factory = create_llm_client(self.config.client)
         prompt_builder = create_prompt_builder(self.config.agent)
+        
+        ### RAG initialization here
+        rag_instance = RAG(model_name='all-MiniLM-L6-v2')  
+        rag_instance.build_index(self.load_documents())  
 
         if self.config.agent.type == "naive":
             return NaiveAgent(client_factory, prompt_builder)
@@ -56,6 +62,16 @@ class AgentFactory:
             return RobustNaiveAgent(client_factory, prompt_builder)
         elif self.config.agent.type == "robust_cot":
             return RobustCoTAgent(client_factory, prompt_builder, config=self.config)
+        if self.config.agent.type == "naive_rag":
+            return NaiveRAGAgent(client_factory, prompt_builder, rag_instance)
 
         else:
             raise ValueError(f"Unknown agent type: {self.config.agent}")
+        
+    def load_documents(self, path):
+        """Load and parse your XML/TXT dumps here."""
+        if path.endswith('.xml'):
+            documents = parse_xml(path)
+        elif path.endswith('.txt'):
+            documents = parse_txt(path)
+        return documents

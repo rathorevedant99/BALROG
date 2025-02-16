@@ -35,6 +35,10 @@ class HistoryPromptBuilder:
         self._last_short_term_obs = None  # To store the latest short-term observation
         self.previous_reasoning = None
         self.max_cot_history = max_cot_history
+        self.retrieved_docs = []
+    
+    def update_retrieved_docs(self, docs):
+        self.retrieved_docs = docs
 
     def update_instruction_prompt(self, instruction: str):
         """Set the system-level instruction prompt."""

@@ -24,6 +24,7 @@ eval:
   icl_episodes: 1
   icl_dataset: records
   feedback_on_invalid_action : True       # Whether to provide feedback on invalid actions
+  document_path: null
 
 client:
   client_name: openai           # LLM client to use (e.g., 'openai', 'gemini', 'claude')
@@ -38,7 +39,8 @@ client:
   alternate_roles: False        # Whether the client requires alternating between the agent and the environment
 
 envs:
-  names: babyai-babaisai-textworld-crafter-nle-minihack   # Environments to evaluate, separated by hyphens
+  # names: babyai-babaisai-textworld-crafter-nle-minihack   # Environments to evaluate, separated by hyphens
+  names: nle
   env_kwargs:
     seed: null                # Random seed; null means a random seed is used
   nle_kwargs:
