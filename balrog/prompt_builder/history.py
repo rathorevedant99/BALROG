@@ -35,17 +35,14 @@ class HistoryPromptBuilder:
         self._last_short_term_obs = None  # To store the latest short-term observation
         self.previous_reasoning = None
         self.max_cot_history = max_cot_history
-        self.retrieved_docs = []
-    
-    def update_retrieved_docs(self, docs):
-        self.retrieved_docs = docs
+        self._retrieved_docs = []  # Store retrieved documents from RAG
 
     def update_instruction_prompt(self, instruction: str):
         """Set the system-level instruction prompt."""
         self.system_prompt = instruction
 
     def update_observation(self, obs: dict):
-        """Add an observation to the prompt history, including text and optionall an image."""
+        """Add an observation to the prompt history, including text and optionally an image."""
         long_term_context = obs["text"].get("long_term_context", "")
         self._last_short_term_obs = obs["text"].get("short_term_context", "")
         text = long_term_context
@@ -75,9 +72,14 @@ class HistoryPromptBuilder:
         """Set the reasoning text to be included with subsequent actions."""
         self.previous_reasoning = reasoning
 
+    def update_retrieved_docs(self, docs: List[str]):
+        """Update the retrieved documents from RAG."""
+        self._retrieved_docs = docs
+
     def reset(self):
-        """Clear the event history."""
+        """Clear the event history and retrieved documents."""
         self._events.clear()
+        self._retrieved_docs = []
 
     def get_prompt(self, icl_episodes=False) -> List[Message]:
         """Generate a list of Message objects representing the prompt.
@@ -115,10 +117,18 @@ class HistoryPromptBuilder:
                 content = event["text"]
                 image = event.get("image") if event.get("include_image", False) else None
                 image_obs = "\nImage observation provided." if image is not None else ""
+                
                 if idx == len(self._events) - 1:
                     content = "Current Observation:\n" + self._last_short_term_obs + "\n" + event["text"] + image_obs
+                    
+                    # Add retrieved documents for the current observation
+                    if self._retrieved_docs:
+                        content += "\n\nRelevant Context:\n"
+                        for i, doc in enumerate(self._retrieved_docs, 1):
+                            content += f"{i}. {doc}\n"
                 else:
                     content = "Observation:\n" + event["text"] + image_obs
+                
                 message = Message(role="user", content=content, attachment=image)
 
                 # Clean up the temporary flag

@@ -1,6 +1,5 @@
 import copy
 import re
-
 from balrog.agents.base import BaseAgent
 
 

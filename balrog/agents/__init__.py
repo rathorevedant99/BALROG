@@ -27,51 +27,66 @@ class AgentFactory:
             config (omegaconf.DictConfig): Configuration object containing settings for the agent and client.
         """
         self.config = config
+        self.rag_instance = None
+        if hasattr(self.config, 'rag') and hasattr(self.config.rag, 'enabled') and self.config.rag.enabled:
+            self._initialize_rag()
 
-    def create_agent(self):
-        """Create an agent instance based on the agent type specified in the configuration.
+    def _initialize_rag(self):
+        """Initialize the RAG instance if RAG is enabled in config."""
+        if not hasattr(self.config.rag, 'model_name') or not hasattr(self.config.rag, 'documents_path'):
+            raise ValueError("RAG configuration must include 'model_name' and 'documents_path'")
+        
+        self.rag_instance = RAG(model_name=self.config.rag.model_name)
+        documents = self.load_documents(self.config.rag.documents_path)
+        self.rag_instance.build_index(documents)
 
-        The function uses the `config.agent.type` attribute to determine which agent to create.
-        It supports several agent types, including Naive, Chain-of-Thought, Self-Refine, Dummy,
-        and Custom agents.
+    def load_documents(self, path):
+        """Load and parse documents from XML or TXT files.
+
+        Args:
+            path (str): Path to the document file.
 
         Returns:
-            Agent: An instance of the selected agent type, configured with the client and prompt builder.
+            list: List of document contents.
 
         Raises:
-            ValueError: If an unknown agent type is specified in the configuration.
+            ValueError: If the file extension is not supported.
+        """
+        if path.endswith('.xml'):
+            return parse_xml(path)
+        elif path.endswith('.txt'):
+            return parse_txt(path)
+        else:
+            raise ValueError(f"Unsupported document format: {path}")
+
+    def create_agent(self):
+        """Create an agent instance based on the configuration.
+
+        Returns:
+            Agent: An instance of the selected agent type.
+
+        Raises:
+            ValueError: If an unknown agent type is specified.
         """
         client_factory = create_llm_client(self.config.client)
         prompt_builder = create_prompt_builder(self.config.agent)
-        
-        ### RAG initialization here
-        rag_instance = RAG(model_name='all-MiniLM-L6-v2')  
-        rag_instance.build_index(self.load_documents())  
 
-        if self.config.agent.type == "naive":
-            return NaiveAgent(client_factory, prompt_builder)
-        elif self.config.agent.type == "cot":
-            return ChainOfThoughtAgent(client_factory, prompt_builder, config=self.config)
-        elif self.config.agent.type == "dummy":
-            return DummyAgent(client_factory, prompt_builder)
-        elif self.config.agent.type == "custom":
-            return CustomAgent(client_factory, prompt_builder)
-        elif self.config.agent.type == "few_shot":
-            return FewShotAgent(client_factory, prompt_builder, self.config.agent.max_icl_history)
-        elif self.config.agent.type == "robust_naive":
-            return RobustNaiveAgent(client_factory, prompt_builder)
-        elif self.config.agent.type == "robust_cot":
-            return RobustCoTAgent(client_factory, prompt_builder, config=self.config)
-        if self.config.agent.type == "naive_rag":
-            return NaiveRAGAgent(client_factory, prompt_builder, rag_instance)
+        agent_types = {
+            "naive": lambda: NaiveAgent(client_factory, prompt_builder),
+            "cot": lambda: ChainOfThoughtAgent(client_factory, prompt_builder, config=self.config),
+            "dummy": lambda: DummyAgent(client_factory, prompt_builder),
+            "custom": lambda: CustomAgent(client_factory, prompt_builder),
+            "few_shot": lambda: FewShotAgent(client_factory, prompt_builder, self.config.agent.max_icl_history),
+            "robust_naive": lambda: RobustNaiveAgent(client_factory, prompt_builder),
+            "robust_cot": lambda: RobustCoTAgent(client_factory, prompt_builder, config=self.config),
+            "naive_rag": lambda: NaiveRAGAgent(client_factory, prompt_builder, self.rag_instance)
+        }
 
-        else:
-            raise ValueError(f"Unknown agent type: {self.config.agent}")
-        
-    def load_documents(self, path):
-        """Load and parse your XML/TXT dumps here."""
-        if path.endswith('.xml'):
-            documents = parse_xml(path)
-        elif path.endswith('.txt'):
-            documents = parse_txt(path)
-        return documents
+        agent_type = self.config.agent.type
+        if agent_type not in agent_types:
+            raise ValueError(f"Unknown agent type: {agent_type}")
+
+        if agent_type == "naive_rag" and self.rag_instance is None:
+            raise ValueError("RAG must be enabled in config to use naive_rag agent")
+
+        return agent_types[agent_type]()

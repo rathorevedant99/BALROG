@@ -6,13 +6,13 @@ class NaiveRAGAgent(BaseAgent):
     """An agent that generates actions based on observations with RAG-enabled retrieval."""
 
     def __init__(self, client_factory, prompt_builder, rag_instance):
-        """Initialize the NaiveRAGAgent with a client, prompt builder, and RAG instance for retrieval."""
+        """Initialize the NaiveRAGAgent with a client, prompt builder, and RAG instance."""
         super().__init__(client_factory, prompt_builder)
         self.client = client_factory()
-        self.rag = rag_instance  # The RAG instance to perform retrieval
+        self.rag = rag_instance
 
     def act(self, obs, prev_action=None):
-        """Generate the next action based on the observation, previous action, and retrieved context.
+        """Generate the next action based on the observation and previous action.
 
         Args:
             obs (dict): The current observation in the environment.
@@ -21,26 +21,20 @@ class NaiveRAGAgent(BaseAgent):
         Returns:
             str: The selected action from the LLM response.
         """
-        # Update the prompt builder with the previous action if exists
         if prev_action:
             self.prompt_builder.update_action(prev_action)
 
-        # Update the prompt builder with the current observation
         self.prompt_builder.update_observation(obs)
 
-        # Get the query from the observation (adjust based on structure)
-        query = obs["text"]["short_term_context"]  # Adjust this based on how your observation is structured
+        # Get the query from the observation
+        query = obs["text"]["short_term_context"]
 
-        # Retrieve relevant documents based on the query using RAG
+        # Retrieve relevant documents using RAG
         retrieved_docs = self.rag.search(query)
+        self.prompt_builder.update_retrieved_docs([doc for doc, _ in retrieved_docs])
 
-        # Update the prompt builder with the retrieved documents
-        self.prompt_builder.update_retrieved_docs([doc for doc, _ in retrieved_docs])  # Pass only the passages
-
-        # Generate the prompt messages
         messages = self.prompt_builder.get_prompt()
 
-        # Add instruction to ensure only an action is outputted (no additional text)
         naive_instruction = """
 You always have to output one of the above actions at a time and no other text. You always have to output an action until the episode terminates.
         """.strip()
@@ -48,10 +42,8 @@ You always have to output one of the above actions at a time and no other text. 
         if messages and messages[-1].role == "user":
             messages[-1].content += "\n\n" + naive_instruction
 
-        # Generate the response from the client (language model)
         response = self.client.generate(messages)
 
-        # Extract the final answer (sanitized action)
         final_answer = self._extract_final_answer(response)
 
         return final_answer

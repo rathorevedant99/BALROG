@@ -1,3 +1,8 @@
+rag:
+  enabled: True
+  model_name: "sentence-transformers/all-mpnet-base-v2"
+  documents_path: local/data/nethackwiki_current.xml
+
 agent: 
   type: naive            # Type of agent to use (e.g., 'naive', 'cot', etc.)
   remember_cot: True     # Whether the agent should remember its reasoning across turns
