@@ -8,8 +8,7 @@ from .few_shot import FewShotAgent
 from .naive import NaiveAgent
 from .robust_naive import RobustNaiveAgent
 from .robust_cot import RobustCoTAgent
-from .naive_rag_vedant import NaiveRAGAgent
-from .naive_rag import RAGNaiveAgent
+from .naive_rag import NaiveRAGAgent
 from .utils.rag import RAG, parse_xml
 
 import logging
@@ -86,8 +85,7 @@ class AgentFactory:
             "robust_naive": lambda: RobustNaiveAgent(client_factory, prompt_builder),
             "robust_cot": lambda: RobustCoTAgent(client_factory, prompt_builder, config=self.config),
             # "naive_rag": lambda: RAGNaiveAgent(client_factory, prompt_builder, self.rag_instance)
-            "naive_rag": lambda: RAGNaiveAgent(client_factory, prompt_builder, config=self.config),
-            "naive_rag_vedant": lambda: NaiveRAGAgent(
+            "naive_rag": lambda: NaiveRAGAgent(
                 client_factory, 
                 prompt_builder, 
                 self._create_rag_instance()  # Create new RAG instance for each agent
