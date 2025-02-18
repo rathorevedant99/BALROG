@@ -167,3 +167,8 @@ cython_debug/
 tw-games.zip
 /records
 /records.zip
+
+*.env*
+*local*
+*results*
+*cache*
