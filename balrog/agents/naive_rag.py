@@ -1,108 +1,84 @@
 import copy
 import re
-import logging
+
 from balrog.agents.base import BaseAgent
+from balrog.agents.agent_rag_utils import *
 
-logger = logging.getLogger(__name__)
 
-class NaiveRAGAgent(BaseAgent):
-    """An agent that generates actions based on observations with RAG-enabled retrieval."""
+class RAGNaiveAgent(BaseAgent):
+    """An agent that generates actions guided by RAG based on observations without complex reasoning."""
 
-    def __init__(self, client_factory, prompt_builder, rag_instance):
-        """Initialize the NaiveRAGAgent with a client, prompt builder, and RAG instance."""
+    def __init__(self, client_factory, prompt_builder, config):
+        """Initialize the RAGNaiveAgent with a client, prompt builder, and retriever."""
         super().__init__(client_factory, prompt_builder)
         self.client = client_factory()
-        self.rag = rag_instance
-        logger.info("NaiveRAGAgent initialized with RAG instance")
+        self.retriever = NethackWikiSearch(config)
+        self.retriever.load_index()
 
     def act(self, obs, prev_action=None):
-        """Generate the next action based on the observation and previous action.
+        """Generate the next action based on the observation and retrieved context.
 
         Args:
-            obs (dict): The current observation in the environment.
+            obs (dict): The current observation.
             prev_action (str, optional): The previous action taken.
 
         Returns:
             str: The selected action from the LLM response.
         """
-        try:
-            if prev_action:
-                self.prompt_builder.update_action(prev_action)
-                logger.debug(f"Previous action updated: {prev_action}")
+        if prev_action:
+            self.prompt_builder.update_action(prev_action)
 
-            self.prompt_builder.update_observation(obs)
-            logger.debug("Observation updated")
+        query = obs["text"]["short_term_context"]  # Use short-term context as the query. In practise this is not good idea
+        retrieved_docs = self.retriever.search(query)
+        print(query) # Look at these later in eval
+        print("\n".join([f"{title}: {content[:1]}" for title, content in retrieved_docs])) # Retrieved titles, look at these later in eval
 
-            # Get the query from the observation - combine both contexts for better retrieval
-            short_term = obs["text"]["short_term_context"]
-            long_term = obs["text"].get("long_term_context", "")
-            query = f"{short_term} {long_term}".strip()
-            
-            logger.debug(f"Generated query: {query[:100]}...")  # Log first 100 chars of query
+        self.prompt_builder.update_observation(obs) # Retrieved docs are not part of the observation (yet?)
 
-            try:
-                # Retrieve relevant documents using RAG
-                retrieved_docs = self.rag.search(query, top_k=10)
-                logger.debug(f"Retrieved {len(retrieved_docs)} documents")
-                
-                # Filter and process retrieved documents
-                processed_docs = []
-                for doc, score in retrieved_docs:
-                    if score < 1.5:  # Only include relevant documents
-                        doc = doc.strip()
-                        if doc:
-                            processed_docs.append(doc)
-                            logger.debug(f"Added doc with score {score}: {doc[:100]}...")
+        messages = self.prompt_builder.get_prompt()
 
-                logger.debug(f"Processed {len(processed_docs)} relevant documents")
-                self.prompt_builder.update_retrieved_docs(processed_docs)
-
-            except Exception as e:
-                logger.error(f"Error during RAG retrieval: {str(e)}")
-                # Continue without retrieved docs if RAG fails
-                processed_docs = []
-
-            messages = self.prompt_builder.get_prompt()
-            logger.debug(f"Generated {len(messages)} messages for prompt")
-
-            # Enhanced instruction that emphasizes using the retrieved context
-            rag_instruction = """
-Consider the retrieved context carefully when deciding your action. The context contains relevant information about game mechanics and optimal strategies.
+        naive_instruction = """
 You always have to output one of the above actions at a time and no other text. You always have to output an action until the episode terminates.
-            """.strip()
+        """.strip()
 
-            if messages and messages[-1].role == "user":
-                messages[-1].content += "\n\n" + rag_instruction
-                logger.debug("Added RAG instruction to final message")
+        if messages and messages[-1].role == "user":
+            messages[-1].content += "\n\n" + naive_instruction
 
-            # Log the final prompt content
-            logger.debug("Sending prompt to VLLM client")
-            for msg in messages:
-                logger.debug(f"Message {msg.role}: {msg.content[:100]}...")
+        # Format retrieved documents nicely
+        retrieved_text = "\n".join(
+            [f"Title: {doc[0]}\nContent: {doc[1][:500]}\n{'-'*40}" for doc in retrieved_docs] # Give first 500 chars of each doc for now
+        )
 
-            response = self.client.generate(messages)
-            logger.debug(f"Received response from VLLM: {response}")
+        rag_instruction = f"""
+    Use these documents to help you decide your next action:
+    {retrieved_text}
+        """
 
-            final_answer = self._extract_final_answer(response)
-            logger.debug(f"Extracted final answer: {final_answer}")
+        # Append retrieved docs to the last user message
+        if messages and messages[-1].role == "user":
+            messages[-1].content += "\n\n" + rag_instruction
 
-            return final_answer
+        response = self.client.generate(messages)
 
-        except Exception as e:
-            logger.error(f"Error in act(): {str(e)}", exc_info=True)
-            # Return a safe default response in case of error
-            return self.client.generate([Message(role="user", content="Output a single valid action.")])
+        final_answer = self._extract_final_answer(response)
+
+        return final_answer
+    
 
     def _extract_final_answer(self, answer):
-        """Sanitize the final answer, keeping only alphabetic characters."""
-        try:
-            def filter_letters(input_string):
-                return re.sub(r"[^a-zA-Z\s:]", "", input_string)
+        """Sanitize the final answer, keeping only alphabetic characters.
 
-            final_answer = copy.deepcopy(answer)
-            final_answer = final_answer._replace(completion=filter_letters(final_answer.completion))
-            return final_answer
+        Args:
+            answer (LLMResponse): The response from the LLM.
 
-        except Exception as e:
-            logger.error(f"Error in _extract_final_answer(): {str(e)}")
-            return answer
+        Returns:
+            LLMResponse: The sanitized response.
+        """
+
+        def filter_letters(input_string):
+            return re.sub(r"[^a-zA-Z\s:]", "", input_string)
+
+        final_answer = copy.deepcopy(answer)
+        final_answer = final_answer._replace(completion=filter_letters(final_answer.completion))
+
+        return final_answer

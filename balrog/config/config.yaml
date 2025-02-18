@@ -1,5 +1,5 @@
 rag:
-  enabled: true
+  enabled: True
   model_name: "sentence-transformers/all-mpnet-base-v2"
   documents_path: "local/data/nethackwiki_current.xml"
   device: "cuda"  # Make sure this is set
@@ -13,6 +13,11 @@ agent:
   max_cot_history: 1     # Maximum number of chain-of-thought steps to keep in history (if using 'cot' type of agent)
   max_icl_history: 1000   # Maximum number of ICL steps to keep in history (if using 'few_shot' type of agent)
   cache_icl: False
+  # embedding_model: "all-mpnet-base-v2" # Model to embed RAG query
+  # nethack_wiki: "local/data/nethackwiki_current.xml" # Path to the Nethack wiki for RAG
+  # nethack_wiki_index: "/homes/53/fpinto/BALROG/balrog/docs_for_rag/nethackwiki_faiss.index" # Path to the faiss index for RAG
+  # nethack_wiki_store: "/homes/53/fpinto/BALROG/balrog/docs_for_rag/nethackwiki_store.pkl" # Path to the faiss store for RAG
+  # top_k: 3
 
 eval:
   output_dir: "results"  # Directory where evaluation results will be saved

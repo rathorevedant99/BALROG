@@ -8,7 +8,8 @@ from .few_shot import FewShotAgent
 from .naive import NaiveAgent
 from .robust_naive import RobustNaiveAgent
 from .robust_cot import RobustCoTAgent
-from .naive_rag import NaiveRAGAgent
+from .naive_rag_vedant import NaiveRAGAgent
+from .naive_rag import RAGNaiveAgent
 from .utils.rag import RAG, parse_xml
 
 import logging
@@ -30,27 +31,22 @@ class AgentFactory:
             config (omegaconf.DictConfig): Configuration object containing settings for the agent and client.
         """
         self.config = config
-        self.rag_instance = None
+        self.rag_config = None
         if hasattr(self.config, 'rag') and hasattr(self.config.rag, 'enabled') and self.config.rag.enabled:
-            self._initialize_rag()
+            self.rag_config = self.config
+            # Pre-load documents to avoid multiple loads
+            self.documents = self.load_documents(self.config.rag.documents_path)
 
-    def _initialize_rag(self):
-        """Initialize the RAG instance if RAG is enabled in config."""
-        if not hasattr(self.config.rag, 'model_name') or not hasattr(self.config.rag, 'documents_path'):
-            raise ValueError("RAG configuration must include 'model_name' and 'documents_path'")
-        
-        # Get device from config, default to 'cuda'
-        device = getattr(self.config.rag, 'device', 'cuda')
-        logger.info(f"Initializing RAG with device: {device}")
-        
-        # Initialize RAG with explicit device parameter
-        self.rag_instance = RAG(
-            model_name=self.config.rag.model_name,
-            device=device,  # Pass device explicitly
-            cache_dir=getattr(self.config.rag, 'cache_dir', './rag_cache')
-        )
-        documents = self.load_documents(self.config.rag.documents_path)
-        self.rag_instance.build_index(documents)
+    def _create_rag_instance(self):
+        """Create a new RAG instance when needed."""
+        if not self.rag_config:
+            raise ValueError("RAG configuration not initialized")
+            
+        logger.info(f"Creating new RAG instance with device: {self.rag_config.rag.device}")
+        rag_instance = RAG(self.rag_config)
+        # Build index using pre-loaded documents
+        rag_instance.build_index(self.documents)
+        return rag_instance
 
     def load_documents(self, path):
         """Load and parse documents from XML or TXT files.
@@ -66,8 +62,6 @@ class AgentFactory:
         """
         if path.endswith('.xml'):
             return parse_xml(path)
-        elif path.endswith('.txt'):
-            return parse_txt(path)
         else:
             raise ValueError(f"Unsupported document format: {path}")
 
@@ -91,14 +85,20 @@ class AgentFactory:
             "few_shot": lambda: FewShotAgent(client_factory, prompt_builder, self.config.agent.max_icl_history),
             "robust_naive": lambda: RobustNaiveAgent(client_factory, prompt_builder),
             "robust_cot": lambda: RobustCoTAgent(client_factory, prompt_builder, config=self.config),
-            "naive_rag": lambda: NaiveRAGAgent(client_factory, prompt_builder, self.rag_instance)
+            # "naive_rag": lambda: RAGNaiveAgent(client_factory, prompt_builder, self.rag_instance)
+            "naive_rag": lambda: RAGNaiveAgent(client_factory, prompt_builder, config=self.config),
+            "naive_rag_vedant": lambda: NaiveRAGAgent(
+                client_factory, 
+                prompt_builder, 
+                self._create_rag_instance()  # Create new RAG instance for each agent
+            )
         }
 
         agent_type = self.config.agent.type
         if agent_type not in agent_types:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
-        if agent_type == "naive_rag" and self.rag_instance is None:
+        if agent_type == "naive_rag_vedant" and self.rag_config is None:
             raise ValueError("RAG must be enabled in config to use naive_rag agent")
 
         return agent_types[agent_type]()

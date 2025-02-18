@@ -83,28 +83,32 @@ def parse_xml(file_path):
         raise
 
 class RAG:
-    def __init__(self, model_name, device='cuda', cache_dir='./rag_cache'):
+    def __init__(self, config):
         """Initialize RAG with automatic device selection."""
-        self.device = torch.device('cuda' if torch.cuda.is_available() and device == 'cuda' else 'cpu')
-        logger.info(f"Initializing RAG on {self.device}")
-        
-        # Initialize model
-        self.model = SentenceTransformer(model_name).to(self.device)
-        self.cache_dir = cache_dir
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        # Initialize FAISS resources if using GPU
-        if self.device.type == 'cuda':
-            self.res = faiss.StandardGpuResources()
-        
+        self.config = config
+        self.device = None
+        self.model = None
+        self.res = None
         self.index = None
         self.faiss_index = None
+        self.cache_dir = config.rag.cache_dir
+        os.makedirs(self.cache_dir, exist_ok=True)
+    
+    def _ensure_initialized(self):
+        """Lazy initialization of CUDA resources."""
+        if self.device is None:
+            self.device = torch.device('cuda' if torch.cuda.is_available() and self.config.rag.device == 'cuda' else 'cpu')
+            logger.info(f"Initializing RAG on {self.device}")
+            self.model = SentenceTransformer(self.config.rag.model_name).to(self.device)
+            
+            if self.device.type == 'cuda':
+                self.res = faiss.StandardGpuResources()
 
     def build_index(self, passages):
         """Build search index efficiently on GPU or CPU."""
         start_time = time.time()
         logger.info(f"Building index for {len(passages)} passages on {self.device}")
-        
+        self._ensure_initialized()
         # Setup cache paths
         model_dim = str(self.model.get_sentence_embedding_dimension())
         model_hash = hashlib.md5(model_dim.encode('utf-8')).hexdigest()[:8]
@@ -198,19 +202,26 @@ class RAG:
 
     def search(self, query, top_k=5):
         """Search for relevant passages."""
+        self._ensure_initialized()
+        
         if not query.strip():
             return []
             
         try:
+            logger.info(f"Generating embedding for query: {query[:100]}...")
             query_embedding = self.model.encode(
                 query,
                 convert_to_numpy=True,
                 show_progress_bar=False,
                 device=self.device
             ).reshape(1, -1)
-            
+            logger.info("Searching FAISS index...")
             D, I = self.faiss_index.search(query_embedding, top_k)
-            return [(self.index[idx], float(score)) for idx, score in zip(I[0], D[0])]
+            results = [(self.index[idx], float(score)) for idx, score in zip(I[0], D[0])]
+            logger.info(f"Found {len(results)} results")
+            logger.info("Top scores: " + ", ".join(f"{score:.4f}" for _, score in results))
+        
+            return results
             
         except Exception as e:
             logger.error(f"Search error: {e}")
