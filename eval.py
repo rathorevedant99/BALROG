@@ -13,6 +13,8 @@ from balrog.agents import AgentFactory
 from balrog.evaluator import EvaluatorManager
 from balrog.utils import collect_and_summarize_results, print_summary_table, setup_environment
 
+import torch
+# Set start method to spawn
 
 @contextmanager
 def redirect_to_file(filepath):
@@ -62,5 +64,10 @@ def main(config: DictConfig):
     print_summary_table(summary)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    if torch.cuda.is_available():
+        # Set start method to spawn and allow CUDA initialization
+        torch.multiprocessing.set_start_method('spawn', force=True)
+        # Enable CUDA multiprocessing support
+        torch.multiprocessing.set_sharing_strategy('file_system')
     main()

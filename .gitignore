@@ -171,3 +171,4 @@ tw-games.zip
 *.env*
 *local*
 *results*
+*cache*

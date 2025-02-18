@@ -9,7 +9,10 @@ from .naive import NaiveAgent
 from .robust_naive import RobustNaiveAgent
 from .robust_cot import RobustCoTAgent
 from .naive_rag import NaiveRAGAgent
-from .utils.rag import RAG, parse_txt, parse_xml
+from .utils.rag import RAG, parse_xml
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class AgentFactory:
@@ -36,7 +39,16 @@ class AgentFactory:
         if not hasattr(self.config.rag, 'model_name') or not hasattr(self.config.rag, 'documents_path'):
             raise ValueError("RAG configuration must include 'model_name' and 'documents_path'")
         
-        self.rag_instance = RAG(model_name=self.config.rag.model_name)
+        # Get device from config, default to 'cuda'
+        device = getattr(self.config.rag, 'device', 'cuda')
+        logger.info(f"Initializing RAG with device: {device}")
+        
+        # Initialize RAG with explicit device parameter
+        self.rag_instance = RAG(
+            model_name=self.config.rag.model_name,
+            device=device,  # Pass device explicitly
+            cache_dir=getattr(self.config.rag, 'cache_dir', './rag_cache')
+        )
         documents = self.load_documents(self.config.rag.documents_path)
         self.rag_instance.build_index(documents)
 

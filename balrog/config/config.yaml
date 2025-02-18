@@ -1,7 +1,9 @@
 rag:
-  enabled: True
+  enabled: true
   model_name: "sentence-transformers/all-mpnet-base-v2"
-  documents_path: local/data/nethackwiki_current.xml
+  documents_path: "local/data/nethackwiki_current.xml"
+  device: "cuda"  # Make sure this is set
+  cache_dir: "./rag_cache"
 
 agent: 
   type: naive            # Type of agent to use (e.g., 'naive', 'cot', etc.)
@@ -29,7 +31,6 @@ eval:
   icl_episodes: 1
   icl_dataset: records
   feedback_on_invalid_action : True       # Whether to provide feedback on invalid actions
-  document_path: null
 
 client:
   client_name: openai           # LLM client to use (e.g., 'openai', 'gemini', 'claude')
