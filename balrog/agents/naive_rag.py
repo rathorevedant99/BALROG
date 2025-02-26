@@ -2,7 +2,7 @@ import copy
 import re
 import logging
 from balrog.agents.base import BaseAgent
-
+from balrog.prompt_builder.history import Message
 logger = logging.getLogger(__name__)
 
 class NaiveRAGAgent(BaseAgent):
