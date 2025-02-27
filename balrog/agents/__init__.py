@@ -46,6 +46,7 @@ class AgentFactory:
         rag_instance = RAG(self.rag_config)
         # Build index using pre-loaded documents
         rag_instance.build_index(self.documents)
+        # rag_instance.build_index()
         return rag_instance
 
     def load_documents(self, path):

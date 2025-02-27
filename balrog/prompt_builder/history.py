@@ -123,7 +123,7 @@ class HistoryPromptBuilder:
                     
                     # Add retrieved documents for the current observation
                     if self._retrieved_docs:
-                        content += "\n\nRelevant Context:\n"
+                        content += "\n\nRelevant Context from RAG:\n"
                         for i, doc in enumerate(self._retrieved_docs, 1):
                             content += f"{i}. {doc}\n"
                 else:

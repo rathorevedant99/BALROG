@@ -4,11 +4,16 @@ import logging
 import time
 from collections import namedtuple
 from io import BytesIO
+import os
 
 import google.generativeai as genai
 from anthropic import Anthropic
 from google.generativeai import caching
 from openai import OpenAI
+
+import dotenv
+
+dotenv.load_dotenv()
 
 LLMResponse = namedtuple(
     "LLMResponse",
@@ -146,6 +151,9 @@ class OpenAIWrapper(LLMClientWrapper):
                 self.client = OpenAI(api_key="EMPTY", base_url=self.base_url)
             elif self.client_name.lower() == "openai":
                 self.client = OpenAI()
+            elif self.client_name.lower() == "openrouter":
+                logger.info(os.getenv("OPENROUTER_API_KEY"))
+                self.client = OpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url="https://openrouter.ai/api/v1")
             self._initialized = True
 
     def convert_messages(self, messages):
@@ -443,7 +451,7 @@ def create_llm_client(client_config):
 
     def client_factory():
         client_name_lower = client_config.client_name.lower()
-        if "openai" in client_name_lower or "vllm" in client_name_lower:
+        if "openai" in client_name_lower or "vllm" in client_name_lower or "openrouter" in client_name_lower:
             return OpenAIWrapper(client_config)
         elif "gemini" in client_name_lower:
             return GoogleGenerativeAIWrapper(client_config)

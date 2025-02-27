@@ -59,9 +59,11 @@ class RobustCoTRAGAgent(BaseAgent):
             logger.debug("Observation updated")
 
             # Get the query from the observation - combine both contexts for better retrieval
-            short_term = obs["text"]["short_term_context"]
-            long_term = obs["text"].get("long_term_context", "")
-            query = f"{short_term} {long_term}".strip()
+            # short_term = obs["text"]["short_term_context"]
+            # long_term = obs["text"].get("long_term_context", "")
+            # query = f"{short_term} {long_term}".strip()
+
+            query = obs["text"]["short_term_context"]
             
             logger.debug(f"Generated query: {query[:100]}...")  # Log first 100 chars of query
 
@@ -80,7 +82,14 @@ class RobustCoTRAGAgent(BaseAgent):
                             logger.debug(f"Added doc with score {score}: {doc[:100]}...")
 
                 logger.info(f"Processed {len(processed_docs)} relevant documents")
-                self.prompt_builder.update_retrieved_docs(processed_docs)
+                # self.prompt_builder.update_retrieved_docs(processed_docs)
+
+                ## Show only the first 500 characters of the content
+                processed_text = "\n".join(
+                    [f"Title: {doc[0]}\nContent: {doc[1][:500]}" for doc in processed_docs]
+                )
+                self.prompt_builder.update_retrieved_docs(processed_text)
+                
 
             except Exception as e:
                 logger.error(f"Error during RAG retrieval: {str(e)}")
@@ -98,18 +107,23 @@ class RobustCoTRAGAgent(BaseAgent):
 
                                 2. **Use Retrieved Context**: The retrieved documents provide insights into the game's environment and potential actions.
 
-                                3. **Decide on an Action**: Choose the best course of action based on the analysis and context.
+                                3. **Use the retrieved context to inform your decision**: The retrieved documents provide insights into the game's environment and potential actions.
 
-                                4. **Yes/No**: If the action is a yes/no question, you must output yn or n.
+                                4. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
 
-                                5. **Output the Action**: You must output the action strictly in the format:
+                                5. **Decide on an Action**: Choose the best course of action based on the analysis and context.
+
+                                6. **Yes/No**: If the action is a yes/no question, you must output yn or n.
+
+                                7. **Output the Action**: You must output the action strictly in the format:
 
                                 <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
 
                                 Replace YOUR_CHOSEN_ACTION with one of the following valid actions:
                                 - {all_actions_str}
 
-                                Ensure the action is valid within the context of NetHack. Do not include any additional text or reasoning in your response.
+                                Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>. After that, you can include a shortreasoning in your response.
+                                The chosen action should be the one that is a strong move to achieve the final goal.
                                 """.strip()
 
             if messages and messages[-1].role == "user":
