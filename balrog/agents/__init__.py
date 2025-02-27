@@ -9,6 +9,7 @@ from .naive import NaiveAgent
 from .robust_naive import RobustNaiveAgent
 from .robust_cot import RobustCoTAgent
 from .naive_rag import NaiveRAGAgent
+from .robust_cot_rag import RobustCoTRAGAgent
 from .utils.rag import RAG, parse_xml
 
 import logging
@@ -89,6 +90,12 @@ class AgentFactory:
                 client_factory, 
                 prompt_builder, 
                 self._create_rag_instance()  # Create new RAG instance for each agent
+            ),
+            "robust_cot_rag": lambda: RobustCoTRAGAgent(
+                client_factory, 
+                prompt_builder, 
+                self._create_rag_instance(),  # Create new RAG instance for each agent
+                self.config
             )
         }
 

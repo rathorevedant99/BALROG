@@ -42,7 +42,7 @@ class NaiveRAGAgent(BaseAgent):
 
             try:
                 # Retrieve relevant documents using RAG
-                retrieved_docs = self.rag.search(query, top_k=10)
+                retrieved_docs = self.rag.search(query)
                 logger.info(f"Retrieved {len(retrieved_docs)} documents")
                 
                 # Filter and process retrieved documents
