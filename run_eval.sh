@@ -45,9 +45,19 @@ python eval.py \
   agent.type=robust_cot_rag \
   agent.max_history=8 \
   agent.remember_cot=True \
+  eval.num_workers=32 \
+  client.client_name=openai \
+  client.model_id=gpt-4o-mini \
+  rag.enabled=True \
+  rag.device=cuda
+  
+  python eval.py \
+  agent.type=robust_cot_rag \
+  agent.max_history=8 \
+  agent.remember_cot=True \
   eval.num_workers=16 \
+  envs.names=minihack \
   client.client_name=gemini \
   client.model_id=gemini-2.0-flash \
   rag.enabled=True \
   rag.device=cpu
-  

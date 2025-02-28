@@ -5,13 +5,15 @@ from balrog.agents.base import BaseAgent
 from balrog.client import LLMClientWrapper
 from balrog.prompt_builder.history import Message
 from balrog.environments.nle.base import NLELanguageWrapper
+from nle.nethack import USEFUL_ACTIONS
 logger = logging.getLogger(__name__)
 
 all_nle_action_map = NLELanguageWrapper.all_nle_action_map
 
 available_actions = [
                 action_strs[0]
-                for _, action_strs in all_nle_action_map.items()
+                for action, action_strs in all_nle_action_map.items()
+                if action in USEFUL_ACTIONS
             ]
 single_chars = [chr(i) for i in range(ord("a"), ord("z") + 1)] + [
                 chr(i) for i in range(ord("A"), ord("Z") + 1)
@@ -122,9 +124,11 @@ class RobustCoTRAGAgent(BaseAgent):
                                 Replace YOUR_CHOSEN_ACTION with one of the following valid actions:
                                 - {all_actions_str}
 
-                                Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>. After that, you can include a short reasoning in your response.
+                                Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>.
                                 The chosen action should be the one that is a strong move to achieve the final goal. The chosen action can only be from the list of actions otherwise you will not be able to perform the action.
-                                You can only output one action at a time.
+                                You can only output one action at a time. Do not create a combination of actions. Only one action from the list of actions should be output.
+                                After that, you can include a short reasoning in your response. For example, if you want to open a door in the direction of north, you can output <|ACTION|>open<|END|>. And then in the 
+                                next call, you can output <|ACTION|>north<|END|>.
                                 """.strip()
 
             if messages and messages[-1].role == "user":

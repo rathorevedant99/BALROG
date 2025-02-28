@@ -60,7 +60,7 @@ envs:
     seed: null                # Random seed; null means a random seed is used
   nle_kwargs:
     character: "@"            # Character representing the agent in NLE
-    max_episode_steps: 100_000  # Max steps per episode in NLE
+    max_episode_steps: 10000  # Max steps per episode in NLE
     no_progress_timeout: 150    # Timeout for no progress in NLE
     savedir: null               # Directory to save NLE data; null disables saving
     save_ttyrec_every: 0        # Frequency of saving TTY recordings
