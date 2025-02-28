@@ -45,12 +45,9 @@ python eval.py \
   agent.type=robust_cot_rag \
   agent.max_history=8 \
   agent.remember_cot=True \
-  agent.max_cot_history=4 \
-  eval.num_workers=8 \
+  eval.num_workers=16 \
   client.client_name=gemini \
   client.model_id=gemini-2.0-flash \
   rag.enabled=True \
-  rag.model_name=sentence-transformers/all-mpnet-base-v2 \
-  rag.documents_path=local/data/nethackwiki_current.xml \
-  rag.device=cuda
+  rag.device=cpu
   

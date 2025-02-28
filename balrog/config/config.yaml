@@ -1,17 +1,20 @@
 rag:
   enabled: False
-  model_name: "sentence-transformers/all-mpnet-base-v2"
-  documents_path: "local/data/nethackwiki_current.xml"
+  # model_name: "sentence-transformers/all-mpnet-base-v2"
+  model_name: all-MiniLM-L6-v2
+  # documents_path: "local/data/nethackwiki_current.xml"
+  # documents_path: "local/data/processed_wiki.json"
+  documents_path: "local/data/processed_wiki_self.json"
   device: "cuda"  # Make sure this is set
   cache_dir: "./rag_cache"
   top_k: 3
 
 agent: 
-  type: naive            # Type of agent to use (e.g., 'naive', 'cot', etc.)
+  type: robust_cot_rag            # Type of agent to use (e.g., 'naive', 'cot', etc.)
   remember_cot: True     # Whether the agent should remember its reasoning across turns
   max_history: 16        # Maximum number of previous turns to keep in the dialogue history
   max_image_history: 0   # Maximum number of images to keep in the history
-  max_cot_history: 1     # Maximum number of chain-of-thought steps to keep in history (if using 'cot' type of agent)
+  max_cot_history: 2     # Maximum number of chain-of-thought steps to keep in history (if using 'cot' type of agent)
   max_icl_history: 1000   # Maximum number of ICL steps to keep in history (if using 'few_shot' type of agent)
   cache_icl: False
   # embedding_model: "all-mpnet-base-v2" # Model to embed RAG query
@@ -57,7 +60,7 @@ envs:
     seed: null                # Random seed; null means a random seed is used
   nle_kwargs:
     character: "@"            # Character representing the agent in NLE
-    max_episode_steps: 5000  # Max steps per episode in NLE
+    max_episode_steps: 100_000  # Max steps per episode in NLE
     no_progress_timeout: 150    # Timeout for no progress in NLE
     savedir: null               # Directory to save NLE data; null disables saving
     save_ttyrec_every: 0        # Frequency of saving TTY recordings

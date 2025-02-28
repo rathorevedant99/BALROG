@@ -20,6 +20,7 @@ from balrog.environments import make_env
 from balrog.utils import get_unique_seed
 
 logger = logging.getLogger(__name__)
+available_cores = multiprocessing.cpu_count() - 1 # Leave one core for other processes
 
 
 class EvaluatorManager:
@@ -60,7 +61,9 @@ class EvaluatorManager:
                         logging.info(f"Skipping completed task: {env_name}, {task}, episode {episode_idx}")
                     else:
                         self.tasks.append((env_name, task, episode_idx))
-        self.num_workers = config.eval.num_workers
+        self.num_workers = min(config.eval.num_workers, available_cores)
+        print(f"Using {self.num_workers} workers")
+        logger.info(f"Using {self.num_workers} workers")
 
     def run(self, agent_factory):
         """Run the evaluation using the specified agent factory.

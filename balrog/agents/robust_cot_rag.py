@@ -105,7 +105,7 @@ class RobustCoTRAGAgent(BaseAgent):
 
                                 1. **Analyze the Situation**: Examine the current game state, including your inventory, position, and any visible threats or opportunities.
 
-                                2. **Use Retrieved Context**: The retrieved documents provide insights into the game's environment and potential actions.
+                                2. **Use Retrieved Context**: The retrieved documents provide insights into the game's environment and potential actions. It's mentioned in the content in the "Relevant Context from RAG:" section.
 
                                 3. **Use the retrieved context to inform your decision**: The retrieved documents provide insights into the game's environment and potential actions.
 
@@ -122,8 +122,9 @@ class RobustCoTRAGAgent(BaseAgent):
                                 Replace YOUR_CHOSEN_ACTION with one of the following valid actions:
                                 - {all_actions_str}
 
-                                Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>. After that, you can include a shortreasoning in your response.
-                                The chosen action should be the one that is a strong move to achieve the final goal.
+                                Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>. After that, you can include a short reasoning in your response.
+                                The chosen action should be the one that is a strong move to achieve the final goal. The chosen action can only be from the list of actions otherwise you will not be able to perform the action.
+                                You can only output one action at a time.
                                 """.strip()
 
             if messages and messages[-1].role == "user":

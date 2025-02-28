@@ -10,7 +10,7 @@ from .robust_naive import RobustNaiveAgent
 from .robust_cot import RobustCoTAgent
 from .naive_rag import NaiveRAGAgent
 from .robust_cot_rag import RobustCoTRAGAgent
-from .utils.rag import RAG, parse_xml
+from .utils.rag import RAG, parse_xml, parse_json
 
 import logging
 logger = logging.getLogger(__name__)
@@ -63,6 +63,8 @@ class AgentFactory:
         """
         if path.endswith('.xml'):
             return parse_xml(path)
+        elif path.endswith('.json'):
+            return parse_json(path)
         else:
             raise ValueError(f"Unsupported document format: {path}")
 
