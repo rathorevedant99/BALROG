@@ -190,7 +190,7 @@ class RobustCoTRAGAgent(BaseAgent):
 
                                 3. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
 
-                                4. **Decide on an Action**: Choose the best course of action based on the analysis and context.
+                                4. **Decide on an Action**: Choose the best course of action based on the analysis and context and final goal of the plan.
 
                                 5. **Yes/No**: If the action is a yes/no question, you must output yn or n.
 
@@ -206,6 +206,17 @@ class RobustCoTRAGAgent(BaseAgent):
                                 You can only output one action at a time. Do not create a combination of actions. Only one action from the list of actions should be output.
                                 After that, you can include a short reasoning in your response. For example, if you want to open a door in the direction of north, you can output <|ACTION|>open<|END|>. And then in the 
                                 next call, you can output <|ACTION|>north<|END|>.
+
+                                Important tips:
+                                - When executing an action, the message will give you the result of the action. Make sure to read the message carefully to understand the result of the action and if the action was successful.
+                                - Any stairs will lead to a new level. Do not confine yourself to only going up or down. Use the stairs to explore other levels regardless of the direction.
+                                - Unexplored areas on the map are dark and will not have any ascii characters. These areas can be explored by moving in that direction. If you are in such an area,
+                                and can't move in one direction, try to move in another direction. When you explore a path, you will see ascii # characters on the map.
+                                - Walls are marked with an underscore "_" horizontally and a pipe "|" vertically. If through a set of walls you see a space, it means you can move through that space.
+                                It might be a door or a passage.
+                                - If the observations show a certain item or object at a particular location, you must first move to that location to interact with it. For example, 
+                                if there is a door far west, you must first move west and then open the door.
+                                - Eating while satiated will lead to choking and death. Do not eat when satiated.
                                 """.strip()
 
             if messages and messages[-1].role == "user":
