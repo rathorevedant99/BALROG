@@ -24,6 +24,91 @@ yes_no = ["yn", 'n']
 all_actions = available_actions + single_chars + single_digits + double_digits + yes_no
 all_actions_str = "\n-".join(all_actions)
 
+ACTIONS = {
+    "north": "move north",
+    "east": "move east",
+    "south": "move south",
+    "west": "move west",
+    "northeast": "move northeast",
+    "southeast": "move southeast",
+    "southwest": "move southwest",
+    "northwest": "move northwest",
+    "far north": "move far north",
+    "far east": "move far east",
+    "far south": "move far south",
+    "far west": "move far west",
+    "far northeast": "move far northeast",
+    "far southeast": "move far southeast",
+    "far southwest": "move far southwest",
+    "far northwest": "move far northwest",
+    "up": "go up a staircase",
+    "down": "go down a staircase (tip: you can only go down if you are standing on the stairs)",
+    "wait": "rest one move while doing nothing",
+    "more": "display more of the message (tip: ONLY ever use when current message ends with --More--)",
+    "annotate": "leave a note about the level",
+    "apply": "apply (use) a tool",
+    "call": "name a monster or object, or add an annotation",
+    "cast": "cast a spell",
+    "close": "close an adjacent door",
+    "open": "open an adjacent door",
+    "dip": "dip an object into something",
+    "drop": "drop an item",
+    "droptype": "drop specific item types (specify in the next prompt)",
+    "eat": "eat something (tip: replenish food when hungry)",
+    "esc": "exit menu or message",
+    "engrave": "engrave writing on the floor (tip: Elbereth)",
+    "enhance": "advance or check weapons skills",
+    "fire": "fire ammunition from quiver",
+    "fight": "fight a monster (even if you only guess one is there)",
+    "force": "force a lock",
+    "inventory": "show your inventory",
+    "invoke": "invoke ",
+    "jump": "jump to a location",
+    "kick": "kick an enemy or a locked door or chest",
+    "look": "look at what is under you",
+    "loot": "loot a box on the floor",
+    "monster": "use a monster's special ability (when polymorphed)",
+    "offer": "offer a sacrifice to the gods (tip: on an aligned altar)",
+    "overview": "display an overview of the dungeon",
+    "pay": "pay your shopping bill",
+    "pickup": "pick up things at the current location",
+    "pray": "pray to the gods for help",
+    "puton": "put on an accessory",
+    "quaff": "quaff (drink) something",
+    "quiver": "select ammunition for quiver",
+    "read": "read a scroll or spellbook",
+    "remove": "remove an accessory",
+    "rub": "rub a lamp or a stone",
+    "search": "search for hidden doors and passages",
+    "swap": "swap wielded and secondary weapons",
+    "takeoff": "take off one piece of armor",
+    "takeoffall": "take off all armor",
+    "teleport": "teleport to another level (if you have the ability)",
+    "throw": "throw something (e.g. a dagger or dart)",
+    "travel": "travel to a specific location on the map (tip: in the next action, specify > or < for stairs, { for fountain, and _ for altar)",
+    "twoweapon": "toggle two-weapon combat",
+    "untrap": "untrap something",
+    "wear": "wear a piece of armor",
+    "wield": "wield a weapon",
+    "wipe": "wipe off your face",
+    "zap": "zap a wand",
+    "minus": "-",
+    "space": " ",
+    "apos": "'",
+    "0": "0",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9",
+}
+
+action_strings = ",\n".join(f"{action}: {description}" for action, description in ACTIONS.items())
+
 class RobustCoTRAGAgent(BaseAgent):
     """An agent that performs actions using chain-of-thought reasoning with RAG-enabled retrieval."""
 
@@ -66,32 +151,26 @@ class RobustCoTRAGAgent(BaseAgent):
             # query = f"{short_term} {long_term}".strip()
 
             query = obs["text"]["short_term_context"]
+            # query = obs["text"].get("long_term_context", "")
             
-            logger.debug(f"Generated query: {query[:100]}...")  # Log first 100 chars of query
+            logger.info(f"Generated query: {query[:100]}...")  # Log first 100 chars of query
 
             try:
                 # Retrieve relevant documents using RAG
                 retrieved_docs = self.rag.search(query)
                 logger.info(f"Retrieved {len(retrieved_docs)} documents")
                 
-                # Filter and process retrieved documents
-                processed_docs = []
-                for doc, score in retrieved_docs:
-                    if score < 1.5:  # Only include relevant documents
-                        doc = doc.strip()
-                        if doc:
-                            processed_docs.append(doc)
-                            logger.debug(f"Added doc with score {score}: {doc[:100]}...")
-
+                processed_docs = [doc for doc, _ in retrieved_docs]
                 logger.info(f"Processed {len(processed_docs)} relevant documents")
                 # self.prompt_builder.update_retrieved_docs(processed_docs)
 
                 ## Show only the first 500 characters of the content
-                processed_text = "\n".join(
-                    [f"Title: {doc[0]}\nContent: {doc[1][:500]}" for doc in processed_docs]
-                )
-                self.prompt_builder.update_retrieved_docs(processed_text)
-                
+                # processed_text = "\n".join(
+                #     [f"Title: {doc[0]}\nContent: {doc[1][:500]}" for doc in processed_docs]
+                # )
+                # self.prompt_builder.update_retrieved_docs(processed_text)
+
+                self.prompt_builder.update_retrieved_docs(processed_docs)
 
             except Exception as e:
                 logger.error(f"Error during RAG retrieval: {str(e)}")
@@ -103,26 +182,24 @@ class RobustCoTRAGAgent(BaseAgent):
 
             # Combined instructions: RAG context + chain of thought + strict output format
             cot_rag_instructions = f"""
-                                You are playing NetHack, a complex dungeon-crawling game. Use the retrieved context to inform your decision.
+                                Use the retrieved context to inform your decision. It's mentioned in the content in the "Relevant Context from RAG:" section.
 
                                 1. **Analyze the Situation**: Examine the current game state, including your inventory, position, and any visible threats or opportunities.
 
-                                2. **Use Retrieved Context**: The retrieved documents provide insights into the game's environment and potential actions. It's mentioned in the content in the "Relevant Context from RAG:" section.
+                                2. **Use the retrieved context to inform your decision**: The retrieved documents provide insights into the game's environment and potential actions.
 
-                                3. **Use the retrieved context to inform your decision**: The retrieved documents provide insights into the game's environment and potential actions.
+                                3. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
 
-                                4. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
+                                4. **Decide on an Action**: Choose the best course of action based on the analysis and context.
 
-                                5. **Decide on an Action**: Choose the best course of action based on the analysis and context.
+                                5. **Yes/No**: If the action is a yes/no question, you must output yn or n.
 
-                                6. **Yes/No**: If the action is a yes/no question, you must output yn or n.
-
-                                7. **Output the Action**: You must output the action strictly in the format:
+                                6. **Output the Action**: You must output the action strictly in the format:
 
                                 <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
 
-                                Replace YOUR_CHOSEN_ACTION with one of the following valid actions:
-                                - {all_actions_str}
+                                Replace YOUR_CHOSEN_ACTION with one of the valid actions provided in the list of actions mention at the beginning of the prompt.
+                                Use the action that is mentioned before the colon in the list. Do not use the action description mentioned after the colon.
 
                                 Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>.
                                 The chosen action should be the one that is a strong move to achieve the final goal. The chosen action can only be from the list of actions otherwise you will not be able to perform the action.
@@ -138,11 +215,11 @@ class RobustCoTRAGAgent(BaseAgent):
             # Log the final prompt content
             logger.debug("Sending prompt to LLM client")
             for msg in messages:
-                logger.debug(f"Message {msg.role}: {msg.content[:100]}...")
+                logger.info(f"Message {msg.role}: {msg.content}...")
 
             # Generate the CoT reasoning
             cot_reasoning = self.client.generate(messages)
-            logger.debug(f"Received response from LLM: {cot_reasoning}")
+            logger.info(f"Received response from LLM: {cot_reasoning}")
 
             # Extract the final answer from the CoT reasoning
             final_answer = self._extract_final_answer(cot_reasoning)

@@ -125,6 +125,7 @@ class HistoryPromptBuilder:
                     if self._retrieved_docs:
                         content += "-"*100 + "\n"
                         content += "\n\nRelevant Context from RAG:\n"
+                        content += "-"*100 + "\n"
                         for i, doc in enumerate(self._retrieved_docs, 1):
                             content += f"{i}. {doc}\n"
                 else:
