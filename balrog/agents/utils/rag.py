@@ -40,65 +40,43 @@ def load_cached_chunks(cache_path):
 def parse_xml(file_path):
     """Parse an XML file into meaningful chunks, specifically handling NetHack wiki format."""
     logger.info(f"Starting to parse XML file: {file_path}")
+    logger.info(f"Starting to parse XML file: {file_path}")
     cache_path = f"{file_path}.chunks.pkl"
     cached_chunks = load_cached_chunks(cache_path)
     if cached_chunks:
         return cached_chunks
 
     try:
-        # Set environment variable to disable tokenizers parallelism before any tokenizer is loaded
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-        
-        # Use iterparse to reduce memory usage
+        tree = ET.parse(file_path)
+        root = tree.getroot()
         chunks = []
         namespace = {'mw': 'http://www.mediawiki.org/xml/export-0.10/'}
-        
-        # Count pages first for progress tracking
-        page_count = 0
-        for _, elem in ET.iterparse(file_path, events=('end',)):
-            if elem.tag.endswith('page'):
-                page_count += 1
-            elem.clear()
-        
-        logger.info(f"Found {page_count} pages to process")
-        
-        # Process pages with iterparse to save memory
-        context = ET.iterparse(file_path, events=('end',))
-        current_page = 0
-        title_text = None
-        
-        for event, elem in tqdm(context, desc="Processing pages", total=page_count*2):  # Rough estimate
-            if elem.tag.endswith('title'):
-                title_text = elem.text
-            elif elem.tag.endswith('text') and title_text and not title_text.startswith(('Talk:', 'User:')):
-                content = elem.text
-                if content:
+
+        for page in tqdm(root.findall('.//mw:page', namespace), desc="Parsing pages"):
+            title = page.find('mw:title', namespace)
+            text = page.find('.//mw:text', namespace)
+
+            if title is not None and text is not None:
+                title_text = title.text
+                content = text.text
+
+                if content and title_text and not title_text.startswith(('Talk:', 'User:')):
                     content = clean_wiki_markup(content)
                     paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
-                    
+
                     for para in paragraphs:
                         if len(para) > 50:
-                            chunk = f"Title: {title_text}\nContent: {para}"
+                            chunk = f"Title: {title_text}\n{para}"
                             chunks.append(chunk)
-            
-            # Clear element to save memory
-            if elem.tag.endswith('page'):
-                current_page += 1
-                title_text = None
-            elem.clear()
-            
-            # Clear root periodically to save memory
-            if current_page % 100 == 0:
-                context.root.clear()
-        
+
         logger.info(f"Generated {len(chunks)} chunks")
-        
+
         # Cache the chunks
         with open(cache_path, 'wb') as f:
             pickle.dump(chunks, f)
-        
+
         return chunks
-    
+
     except Exception as e:
         logger.error(f"Error parsing XML: {str(e)}")
         raise

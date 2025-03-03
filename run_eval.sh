@@ -57,6 +57,6 @@
   agent.max_cot_history=2 \
   eval.num_workers=7 \
   client.client_name=gemini \
-  client.model_id=gemini-1.5-flash \
+  client.model_id=gemini-2.0-flash \
   rag.enabled=True \
   rag.device=cpu
