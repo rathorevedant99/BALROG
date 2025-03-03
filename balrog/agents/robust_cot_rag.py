@@ -152,180 +152,90 @@ class RobustCoTRAGAgent(BaseAgent):
             # long_term = obs["text"].get("long_term_context", "")
             # query = f"{short_term} {long_term}".strip()
 
-            context = obs["text"]["short_term_context"]
-            # query = obs["text"].get("long_term_context", "")
+            short_term_context = obs["text"]["short_term_context"]
+            long_term_context = obs["text"].get("long_term_context", "")
+            context = f"{short_term_context} {long_term_context}".strip()
+            logger.debug(f"Context: {context}")
 
-            # dungeon_level_match = re.search(r"Dlvl:(\d+)", context)
-            # xp_level_match = re.search(r"Xp:(\d+)", context)
-            
-            # current_dungeon_level = dungeon_level_match.group(1) if dungeon_level_match else "unknown"
-            # current_xp_level = xp_level_match.group(1) if xp_level_match else "unknown"
-            
-            # # Extract HP information
-            # hp_match = re.search(r"HP:(\d+)\((\d+)\)", context)
-            # current_hp = hp_match.group(1) if hp_match else None
-            # max_hp = hp_match.group(2) if hp_match else None
-            
-            # Reset query count if context changed
-            if self.last_context != context:
-                self.query_count = 0
-                self.last_context = context
-            else:
-                self.query_count += 1
+            system_prompt = self.prompt_builder.system_prompt
 
-            # Extract key information from context
-            inventory_items = re.findall(r"[a-zA-Z]\s-\s([^\n]+)", context)
-            visible_items = re.findall(r"You see here ([^\n]+)", context)
-            monsters = re.findall(r"You see ([^.]+)\.", context)
-            
-            # Define different query templates based on query count
-            query_templates = [
-                # Combat and monsters
-                f"""QUESTION: {' '.join(monsters)} combat strategy attributes weaknesses""",
-                
-                # Item identification and usage
-                f"""QUESTION: {' '.join(inventory_items + visible_items)} uses effects benefits""",
-                
-                # Equipment and inventory optimization
-                f"""QUESTION: optimal equipment loadout {' '.join(inventory_items)}""",
-                
-                # Dungeon features and navigation
-                """QUESTION: dungeon features corridors doors traps navigation""",
-                
-                # Survival and status management
-                """QUESTION: HP management healing recovery survival tactics"""
-
-                # Exploration and discovery
-                """QUESTION: explore new areas discover hidden paths progress"""
-            ]
-            
-            current_template = query_templates[self.query_count % len(query_templates)]
-            
-            interim_query = f"""
-            Based on the current game state: {context}
-
-            Generate a SHORT, FOCUSED search query (2-4 keywords) related to:
-            {current_template}
-
-            Focus on SPECIFIC ITEMS, MONSTERS, or FEATURES currently visible.
-            DO NOT ask questions - use keywords only.
-            
-            Previous queries focused on: {', '.join(query_templates[:(self.query_count % len(query_templates))])}
-            
-            Reply in the form of: QUESTION: <keywords>
-            """.strip()
-
-            # """{context}\n\n
-            # Asses the current situation properly. There is an available RAG document store that has all the information about the game NetHack.
-            # Given the situation, ask a short question that you think will help you learn more about the game, inventory items, monsters or anything
-            # that will help you make a decision. Your question should not be more than 4-5 words. Your question should be a question that you think will help you make a decision.
-            # Your question should not ask about the general game mechanics."""
+            system_prompt += context
 
 
-            # interim_query = f"""You are currently on dungeon level {current_dungeon_level} and have {current_xp_level} experience points. Your goal is to 
-            # maximize your dungeon level and experience points. To do so, you must explore the dungeons, fight monsters, and collect items. Examine the current game state, 
-            # including your inventory, position, and any visible threats or opportunities, you can ask a question to a large document store to get more information about the dungeon and the actions you should perform. Knowing all this,
-            # create a short query to retrive the most relevant information from the document store. Your query should leverage your current observations and inventory to 
-            # get the most relevant information that you can use immediately and help you plan for the future. The query should be pinpointed and not
-            # general in nature.
+            # """Your primary goal is to explore the dungeon,
+            # kill monsters and survive. This can be measured by the dungeon level and the experience points."""
+            # rag_query_prompt = system_prompt + \
+            # """
+            # Understand the provided context for your current state and map position. 
+
+            # You can retrieve relevant information from a RAG database. Given the current state and map position, you can ask a keyword
+            # query to retrieve relevant information. Example: "Magic Potion Usage Effects"
+
+            # The RAG database is to help you find documents that explain different 
+
+            # Create a short rag query of not more than 4 words given your current state. Respond in the format:
+            # Query:<query>
             # """
 
+            rag_query_prompt = system_prompt + \
+            """
+            Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
+            Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?
+            Respond in the format:
+            Query:<query>
+            """
 
-            query = self.client.generate([Message(role="user", content=interim_query)])
-            query = query.completion
-            query = re.search(r"QUESTION: (.*)", query)
-            query = query.group(1) if query else ""
-            logger.info(f"Generated RAG query: {query[:100]}...")  # Log first 100 chars of query
+            logger.debug(f"RAG Query Prompt:{rag_query_prompt}")
 
-            try:
-                # Retrieve relevant documents using RAG
-                retrieved_docs = self.rag.search(query)
-                logger.info(f"Retrieved {len(retrieved_docs)} documents")
-                
-                processed_docs = [doc for doc, _ in retrieved_docs]
-                self.prompt_builder.update_retrieved_docs(processed_docs)
-                logger.info(f"Processed {len(processed_docs)} relevant documents")
-                # refine_prompt = f"""
-                # For the prompt: {query}
-                # The retrieved documents are:
-                # {processed_docs}
-                # Summarize the retrieved documents in a concise manner so that it can be used by a game 
-                # player to make decisions. Reply in the form of: SUMMARY: <summary>
-                # """
-                # processed_rag = self.client.generate([Message(role="user", content=refine_prompt)])
-                # processed_rag = processed_rag.completion
-                # logger.debug(f"Raw processed_rag output: {repr(processed_rag)}")
-                
-                # # Extract summary if it exists
-                # summary_match = re.search(r"SUMMARY:\s*(.*)", processed_rag)
-                # processed_rag = summary_match.group(1).strip() if summary_match else processed_rag.strip()
-                # processed_rag = [processed_rag]
-                # self.prompt_builder.update_retrieved_docs(processed_rag)
+            rag_response = self.client.generate([Message(role="user", content=rag_query_prompt)])
+            rag_query = rag_response.completion
+            rag_query = rag_query.split("Query:")[1].strip()
 
-            except Exception as e:
-                logger.error(f"Error during RAG retrieval: {str(e)}")
-                # Continue without retrieved docs if RAG fails
-                processed_docs = []
+            logger.info(f"RAG query: {rag_query}")
 
-            messages = self.prompt_builder.get_prompt()
-            logger.debug(f"Generated {len(messages)} messages for prompt")
+            rag_docs = self.rag.search(rag_query)
+            
+            rag_context = "\n".join([doc for doc, _ in rag_docs])
 
-            # Combined instructions: RAG context + chain of thought + strict output format
-            cot_rag_instructions = f"""
-                                Use the retrieved context to inform your decision. It's mentioned in the content in the "Relevant Context from RAG:" section. The goal is to
-                                explore the dungeon, kill monsters and survive. This can be measured by the dungeon level and the experience points.
+            logger.debug(f"RAG context: {rag_context}")
 
-                                1. The retrieved context might not be totally accurate. Use your own understanding along with the retrieved context to make a decision.
+            rag_usage_prompt = system_prompt + context + \
+            f"""
+            Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+            {rag_context}
+            """
 
-                                2. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
+            self.prompt_builder.update_instruction_prompt(rag_usage_prompt)
 
-                                3. **Decide on an Action**: Choose the best course of action based on the analysis and context and final goal of the plan.
-
-                                4. **Yes/No**: If the action is a yes/no question, you must output yn or n.
-
-                                5. **Output the Action**: You must output the action strictly in the format:
+            cot_instructions = """
+                                Given the retrieved context, think step-by-step to what will help progress towards the goal.
+                                Then, you must choose exactly one of the listed actions and output it strictly in the following format:
 
                                 <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
 
-                                Replace YOUR_CHOSEN_ACTION with one of the valid actions provided in the list of actions mention at the beginning of the prompt.
-                                Use the action that is mentioned before the colon in the list. Do not use the action description mentioned after the colon.
+                                Replace YOUR_CHOSEN_ACTION with the chosen action.
+                                
+                                The chosen action can only be from the list of actions provided. 
+                                
+                                Additional tips:
+                                - Yes or no can be responded with yn or n
+                                - Anything which is not from the list of actions, is not a valid action
+                                - You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
+                                - Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later""".strip()
+            
+            messages = self.prompt_builder.get_prompt()
+            messages[-1].content += "\n\n" + cot_instructions
 
-                                Ensure the action is valid within the context of NetHack. Your response should start with <|ACTION|>YOUR_CHOSEN_ACTION<|END|>.
-                                The chosen action should be the one that is a strong move to achieve the final goal. The chosen action can only be from the list of actions otherwise you will not be able to perform the action.
-                                You can only output one action at a time. Do not create a combination of actions. Only one action from the list of actions should be output.
-                                After that, you can include a short reasoning in your response. For example, if you want to open a door in the direction of north, you can output <|ACTION|>open<|END|>. And then in the 
-                                next call, you can output <|ACTION|>north<|END|>.
+            logger.info(f"COT Prompt: {messages}")
 
-                                Important tips:
-                                - When executing an action, the message will give you the result of the action. Make sure to read the message carefully to understand the result of the action and if the action was successful.
-                                - Unexplored areas on the map are dark and will not have any ascii characters. These areas can be explored by moving in that direction. If you are in such an area,
-                                and can't move in one direction, try to move in another direction. When you explore a path, you will see ascii # characters on the map.
-                                - Walls are marked with an underscore "_" horizontally and a pipe "|" vertically. If through a set of walls you see a space, it means you can move through that space.
-                                It might be a door or a passage.
-                                - If the observations show a certain item or object at a particular location, you must first move to that location to interact with it. For example, 
-                                if there is a door far west, you must first move west and then open the door.
-                                - Eating while satiated will lead to choking and death. Do not eat when satiated.
-                                """.strip()
-            # - Any stairs will lead to a new level. Do not confine yourself to only going up or down. Use the stairs to explore other levels regardless of the direction.
-
-            if messages and messages[-1].role == "user":
-                messages[-1].content += "\n\n" + cot_rag_instructions
-                logger.debug("Added CoT-RAG instructions to final message")
-
-            # Log the final prompt content
-            logger.debug("Sending prompt to LLM client")
-            for msg in messages:
-                logger.info(f"Message {msg.role}: {msg.content}...")
-
-            # Generate the CoT reasoning
             cot_reasoning = self.client.generate(messages)
-            logger.info(f"Received response from LLM: {cot_reasoning}")
 
-            # Extract the final answer from the CoT reasoning
+            logger.info(f"COT reasoning: {cot_reasoning}")
+
             final_answer = self._extract_final_answer(cot_reasoning)
-            logger.debug(f"Extracted final answer: {final_answer}")
 
             return final_answer
+            
 
         except Exception as e:
             logger.error(f"Error in act(): {str(e)}", exc_info=True)
