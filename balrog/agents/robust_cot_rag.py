@@ -194,7 +194,7 @@ class RobustCoTRAGAgent(BaseAgent):
 
             # system_prompt = self.prompt_builder.system_prompt
             system_prompt = refined_system_prompt
-            self.prompt_builder.update_instuction_prompt(system_prompt)
+            self.prompt_builder.update_instruction_prompt(system_prompt)
 
             additional_tips = """
 - Very Important: - Taking the stairs up on level 1 without Amulet of Yendor will quit the game and you will lose. Do not take the stairs up on level 1 without the Amulet of Yendor.
@@ -244,7 +244,7 @@ you must first move to reach the door and then interact with it.
             rag_query = rag_response.completion
             rag_query = rag_query.split("Query:")[1].strip()
 
-            logger.info(f"RAG query: {rag_query}")
+            logger.debug(f"RAG query: {rag_query}")
 
             rag_docs = self.rag.search(rag_query)
             rag_context = "\n".join([doc for doc, _ in rag_docs])
@@ -276,6 +276,7 @@ you must first move to reach the door and then interact with it.
             rag_summary = rag_summary.completion
 
             logger.debug(f"RAG context: {rag_context}")
+            logger.info(f"RAG summary: {rag_summary}")
 
             rag_usage_prompt = system_prompt + long_term_context +\
             f"""
@@ -316,9 +317,9 @@ Important:
 - Ensure that the action exactly matches one of the allowed action phrases."""
 
             messages = rag_usage_prompt + "\n\n" + cot_instructions
-            logger.info(f"Final Prompt: {messages}")
+            logger.debug(f"Final Prompt: {messages}")
             
-            self.prompt_builder.update_
+            # self.prompt_builder.update_
 
             cot_reasoning = self.client.generate([Message(role="user", content=messages)])
             
