@@ -143,118 +143,164 @@ class RobustCoTRAGAgent(BaseAgent):
         Returns:
             LLMResponse: The response containing the final selected action.
         """
-        start_time = time.time()
-        try:
-            if prev_action:
-                self.prompt_builder.update_action(prev_action)
-                logger.debug(f"Previous action updated: {prev_action}")
+        if prev_action:
+            self.prompt_builder.update_action(prev_action)
+        self.prompt_builder.update_observation(obs)
 
-            self.prompt_builder.update_observation(obs)
-            logger.debug("Observation updated")
+        messages = self.prompt_builder.get_prompt()
 
-            # Get the query from the observation - combine both contexts for better retrieval
-            # short_term = obs["text"]["short_term_context"]
-            # long_term = obs["text"].get("long_term_context", "")
-            # query = f"{short_term} {long_term}".strip()
+        query_instructions = """
+        Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
+        Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?" Reply in the form of: QUESTION: <question>
+        """.strip()
 
-            short_term_context = obs["text"]["short_term_context"]
-            long_term_context = obs["text"].get("long_term_context", "")
-            context = f"{short_term_context} {long_term_context}".strip()
-            logger.debug(f"Context: {context}")
+        messages[-1].content += "\n\n" + query_instructions
 
-            system_prompt = self.prompt_builder.system_prompt
+        query_reasoning = self.client.generate(messages)
+        query = self._extract_question(query_reasoning)
+        question = query.reasoning.split("QUESTION:")[-1].strip()
+        logger.info(f"Extracted question: {question}")
 
-            system_prompt += context
+        retrieved_docs = self.rag.search(question)
+        # logger.info(f"Retrieved {len(retrieved_docs)} documents")
+        # logger.info(f"Retrieved docs 1st: {retrieved_docs[0]}")
+        # logger.info(f"Retrieved docs 2nd: {retrieved_docs[1]}")
+        # logger.info(f"Retrieved docs 3rd: {retrieved_docs[2]}")
 
 
-            # """Your primary goal is to explore the dungeon,
-            # kill monsters and survive. This can be measured by the dungeon level and the experience points."""
-            # rag_query_prompt = system_prompt + \
-            # """
-            # Understand the provided context for your current state and map position. 
+        rag_instructions = """
+        Go through the retrieved documents and consider the information they provide. The documents are there to help you make an informed decision. They have information about game mechanics and optimal strategies. 
+        """
+        rag_instructions += "\n\n" + "Here are the retrieved documents:\n\n"
+        for doc, _ in retrieved_docs:
+            rag_instructions += doc + "\n\n"
+        rag_instructions.strip()
 
-            # You can retrieve relevant information from a RAG database. Given the current state and map position, you can ask a keyword
-            # query to retrieve relevant information. Example: "Magic Potion Usage Effects"
+        if messages and messages[-1].role == "user":
+            messages[-1].content += "\n\n" + rag_instructions
 
-            # The RAG database is to help you find documents that explain different 
 
-            # Create a short rag query of not more than 4 words given your current state. Respond in the format:
-            # Query:<query>
-            # """
+        # Add CoT-specific instructions to the prompt
+        cot_instructions = """
+            Now think about what's the best course of action step by step.
+            Finally, provide a valid single output action at the end of the message in the form of: <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
 
-            rag_query_prompt = system_prompt + \
-            """
-            Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
-            Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?
-            Respond in the format:
-            Query:<query>
-            """
+            Replace YOUR_CHOSEN_ACTION with the chosen action from the list of allowed actions.
+                    """.strip()
 
-            logger.debug(f"RAG Query Prompt:{rag_query_prompt}")
+        messages[-1].content += "\n\n" + cot_instructions
 
-            rag_response = self.client.generate([Message(role="user", content=rag_query_prompt)])
-            rag_query = rag_response.completion
-            rag_query = rag_query.split("Query:")[1].strip()
+        # Generate the CoT reasoning
+        cot_reasoning = self.client.generate(messages)
+        
+        # # Extract the final answer from the CoT reasoning
+        final_answer = self._extract_final_answer(cot_reasoning)
+        return final_answer
+    
+        # start_time = time.time()
+        # total_input_tokens = 0
+        # total_output_tokens = 0
+        
+        # try:
+        #     if prev_action:
+        #         self.prompt_builder.update_action(prev_action)
+        #         logger.debug(f"Previous action updated: {prev_action}")
 
-            logger.info(f"RAG query: {rag_query}")
+        #     self.prompt_builder.update_observation(obs)
+        #     logger.debug("Observation updated")
 
-            rag_docs = self.rag.search(rag_query)
+        #     short_term_context = obs["text"]["short_term_context"]
+        #     long_term_context = obs["text"].get("long_term_context", "")
+        #     context = f"{short_term_context} {long_term_context}".strip()
+        #     logger.debug(f"Context: {context}")
+
+        #     system_prompt = self.prompt_builder.system_prompt
+
+        #     additional_tips = """
+        #     Additional tips:
+        #             - Yes or no can be responded with yn or n
+        #             - Anything which is not from the list of actions, is not a valid action
+        #             - You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
+        #             - Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later
+        #     """
+
+        #     system_prompt += additional_tips + context
+
+        #     rag_query_prompt = system_prompt + \
+        #     """
+        #     Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
+        #     Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?
+        #     Respond in the format:
+        #     Query:<query>
+        #     """
+
+        #     logger.debug(f"RAG Query Prompt:{rag_query_prompt}")
+
+        #     # Track RAG query tokens
+        #     rag_response = self.client.generate([Message(role="user", content=rag_query_prompt)])
+        #     total_input_tokens += rag_response.input_tokens
+        #     total_output_tokens += rag_response.output_tokens
             
-            rag_context = "\n".join([doc for doc, _ in rag_docs])
+        #     rag_query = rag_response.completion
+        #     rag_query = rag_query.split("Query:")[1].strip()
 
-            logger.debug(f"RAG context: {rag_context}")
+        #     logger.info(f"RAG query: {rag_query}")
 
-            rag_usage_prompt = system_prompt + context + \
-            f"""
-            Below is the retrieved context from the RAG database. Use this information to help you make a decision.
-            {rag_context}
-            """
+        #     rag_docs = self.rag.search(rag_query)
+        #     rag_context = "\n".join([doc for doc, _ in rag_docs])
 
-            self.prompt_builder.update_instruction_prompt(rag_usage_prompt)
+        #     logger.debug(f"RAG context: {rag_context}")
 
-            cot_instructions = """
-                                Given the retrieved context, think step-by-step to what will help progress towards the goal.
-                                Then, you must choose exactly one of the listed actions and output it strictly in the following format:
+        #     rag_usage_prompt = system_prompt + context + \
+        #     f"""
+        #     Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+        #     {rag_context}
+        #     """
 
-                                <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
+        #     self.prompt_builder.update_instruction_prompt(rag_usage_prompt)
 
-                                Replace YOUR_CHOSEN_ACTION with the chosen action.
+        #     cot_instructions = """
+        #                         Given the retrieved context, think step-by-step to what will help progress towards the goal.
+        #                         Then, you must choose exactly one of the listed actions and output it strictly in the following format:
+
+        #                         <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
+
+        #                         Replace YOUR_CHOSEN_ACTION with the chosen action.
                                 
-                                The chosen action can only be from the list of actions provided. 
-                                
-                                Additional tips:
-                                - Yes or no can be responded with yn or n
-                                - Anything which is not from the list of actions, is not a valid action
-                                - You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
-                                - Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later""".strip()
+        #                         You should first output the action in the format <|ACTION|>action<|END|>. After this,
+        #                         you should output a one sentence reasoning for the action.
+        #                         """.strip()
             
-            messages = self.prompt_builder.get_prompt()
-            messages[-1].content += "\n\n" + cot_instructions
-            logger.info(f"COT Prompt: {messages}")
+        #     # Track CoT reasoning tokens
+        #     messages = self.prompt_builder.get_prompt()
+        #     messages[-1].content += "\n\n" + cot_instructions
+        #     cot_reasoning = self.client.generate(messages)
+        #     total_input_tokens += cot_reasoning.input_tokens
+        #     total_output_tokens += cot_reasoning.output_tokens
 
-            cot_reasoning = self.client.generate(messages)
-            logger.info(f"COT reasoning: {cot_reasoning}")
+        #     final_answer = self._extract_final_answer(cot_reasoning)
 
-            final_answer = self._extract_final_answer(cot_reasoning)
+        #     end_time = time.time()
+        #     memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # MB
+        #     logger.info(f"""
+        #     Performance metrics:
+        #     - Time taken: {end_time - start_time:.2f}s
+        #     - Memory usage: {memory_usage:.2f}MB
+        #     - RAG context size: {len(rag_context)} chars
+        #     - Total input tokens: {total_input_tokens}
+        #     - Total output tokens: {total_output_tokens}
+        #     - Total tokens: {total_input_tokens + total_output_tokens}
+        #     """)
 
-            end_time = time.time()
-            memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # MB
-            logger.info(f"""
-            Performance metrics:
-            - Time taken: {end_time - start_time:.2f}s
-            - Memory usage: {memory_usage:.2f}MB
-            - RAG context size: {len(rag_context)} chars
-            """)
+        #     gc.collect()
 
-            gc.collect()
-
-            return final_answer
+        #     return final_answer
             
 
-        except Exception as e:
-            logger.error(f"Error in act(): {str(e)}", exc_info=True)
-            # Return a safe default response in case of error
-            return self.client.generate([Message(role="user", content="Output a single valid action in the format <|ACTION|>action<|END|>.")])
+        # except Exception as e:
+        #     logger.error(f"Error in act(): {str(e)}", exc_info=True)
+        #     # Return a safe default response in case of error
+        #     return self.client.generate([Message(role="user", content="Output a single valid action in the format <|ACTION|>action<|END|>.")])
 
     def _extract_final_answer(self, reasoning):
         """Extract the final action from the chain-of-thought reasoning response.
@@ -292,3 +338,21 @@ class RobustCoTRAGAgent(BaseAgent):
         """Fallback method to extract an action when the strict format fails."""
         # Filter to keep only alphabetic characters as a last resort
         return re.sub(r"[^a-zA-Z\s:]", "", text).strip()
+    
+    def _extract_question(self, reasoning):
+        """Extract the question from the chain-of-thought reasoning response.
+        Args:
+            reasoning (LLMResponse): The response containing CoT reasoning and action.
+        Returns:
+            str: The question extracted from the reasoning.
+        """
+
+        def filter_letters(input_string):
+            return re.sub(r"[^a-zA-Z\s:]", "", input_string)
+
+        question = copy.deepcopy(reasoning)
+        # self.prompt_builder.update_reasoning(reasoning.completion)
+        question = question._replace(reasoning=question.completion)
+        question = question._replace(completion=filter_letters(question.completion).split("QUESTION:")[-1].strip())
+
+        return question
