@@ -14,21 +14,21 @@ import gc
 
 logger = logging.getLogger(__name__)
 
-all_nle_action_map = NLELanguageWrapper.all_nle_action_map
+# all_nle_action_map = NLELanguageWrapper.all_nle_action_map
 
-available_actions = [
-                action_strs[0]
-                for action, action_strs in all_nle_action_map.items()
-                if action in USEFUL_ACTIONS
-            ]
-single_chars = [chr(i) for i in range(ord("a"), ord("z") + 1)] + [
-                chr(i) for i in range(ord("A"), ord("Z") + 1)
-            ]
-single_digits = [str(i) for i in range(10)]
-double_digits = [f"{i:02d}" for i in range(100)]
-yes_no = ["yn", 'n']
-all_actions = available_actions + single_chars + single_digits + double_digits + yes_no
-all_actions_str = "\n-".join(all_actions)
+# available_actions = [
+#                 action_strs[0]
+#                 for action, action_strs in all_nle_action_map.items()
+#                 if action in USEFUL_ACTIONS
+#             ]
+# single_chars = [chr(i) for i in range(ord("a"), ord("z") + 1)] + [
+#                 chr(i) for i in range(ord("A"), ord("Z") + 1)
+#             ]
+# single_digits = [str(i) for i in range(10)]
+# double_digits = [f"{i:02d}" for i in range(100)]
+# yes_no = ["yn", 'n']
+# all_actions = available_actions + single_chars + single_digits + double_digits + yes_no
+# all_actions_str = "\n-".join(all_actions)
 
 ACTIONS = {
     "north": "move north",
@@ -115,6 +115,37 @@ ACTIONS = {
 
 action_strings = ",\n".join(f"{action}: {description}" for action, description in ACTIONS.items())
 
+refined_system_prompt = f"""
+You are an agent playing NetHack. Below is a set of allowed actions followed by a short description of each action.
+For example:
+north: move north
+east: move east
+south: move south
+west: move west
+northeast: move northeast
+
+Here is the list of all allowed actions:
+
+{action_strings}.
+
+Tips:
+- Taking the stairs up on level 1 without Amulet of Yendor will quit the game and you will lose. Do not take the stairs up on level 1 without the Amulet of Yendor.
+- When the message asks for a completion, such as: "What do you want to eat? [d or ?*]", you should respond with a single character corresponding to the item you want to eat/use.
+    - For example, "What do you want to eat? [dgh or ?*]" -> Possible answers are "d", "g", or "h" to eat the associated food.
+- When the message asks for a direction, such as: "In what direction?" you should respond with a direction.
+- When the message has --More-- at the end, your next action should be "more" to see the rest of the message.
+- Explore the environment to find the stairs down to the next level.
+- Always carefully read the last message to understand the current state of the game and decide your next action accordingly.
+- If you keep moving in the same direction, you will eventually hit a wall and stop moving. Your message might be: "It's solid stone", or "It's a wall". Change your action to move in another direction to continue exploring the environment.
+- Read the language observation carefully and look at ascii map or image observation provided to decide the next action to take and where to move next.
+- You can attack monsters by moving into them.
+
+In a moment I will present a history of actions and observations from the game.
+Your goal is to get as far as possible in the game.
+
+""".strip()
+
+
 class RobustCoTRAGAgent(BaseAgent):
     """An agent that performs actions using chain-of-thought reasoning with RAG-enabled retrieval."""
 
@@ -143,164 +174,181 @@ class RobustCoTRAGAgent(BaseAgent):
         Returns:
             LLMResponse: The response containing the final selected action.
         """
-        if prev_action:
-            self.prompt_builder.update_action(prev_action)
-        self.prompt_builder.update_observation(obs)
-
-        messages = self.prompt_builder.get_prompt()
-
-        query_instructions = """
-        Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
-        Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?" Reply in the form of: QUESTION: <question>
-        """.strip()
-
-        messages[-1].content += "\n\n" + query_instructions
-
-        query_reasoning = self.client.generate(messages)
-        query = self._extract_question(query_reasoning)
-        question = query.reasoning.split("QUESTION:")[-1].strip()
-        logger.info(f"Extracted question: {question}")
-
-        retrieved_docs = self.rag.search(question)
-        # logger.info(f"Retrieved {len(retrieved_docs)} documents")
-        # logger.info(f"Retrieved docs 1st: {retrieved_docs[0]}")
-        # logger.info(f"Retrieved docs 2nd: {retrieved_docs[1]}")
-        # logger.info(f"Retrieved docs 3rd: {retrieved_docs[2]}")
-
-
-        rag_instructions = """
-        Go through the retrieved documents and consider the information they provide. The documents are there to help you make an informed decision. They have information about game mechanics and optimal strategies. 
-        """
-        rag_instructions += "\n\n" + "Here are the retrieved documents:\n\n"
-        for doc, _ in retrieved_docs:
-            rag_instructions += doc + "\n\n"
-        rag_instructions.strip()
-
-        if messages and messages[-1].role == "user":
-            messages[-1].content += "\n\n" + rag_instructions
-
-
-        # Add CoT-specific instructions to the prompt
-        cot_instructions = """
-            Now think about what's the best course of action step by step.
-            Finally, provide a valid single output action at the end of the message in the form of: <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
-
-            Replace YOUR_CHOSEN_ACTION with the chosen action from the list of allowed actions.
-                    """.strip()
-
-        messages[-1].content += "\n\n" + cot_instructions
-
-        # Generate the CoT reasoning
-        cot_reasoning = self.client.generate(messages)
-        
-        # # Extract the final answer from the CoT reasoning
-        final_answer = self._extract_final_answer(cot_reasoning)
-        return final_answer
     
-        # start_time = time.time()
-        # total_input_tokens = 0
-        # total_output_tokens = 0
+        start_time = time.time()
+        total_input_tokens = 0
+        total_output_tokens = 0
         
-        # try:
-        #     if prev_action:
-        #         self.prompt_builder.update_action(prev_action)
-        #         logger.debug(f"Previous action updated: {prev_action}")
+        try:
+            if prev_action:
+                self.prompt_builder.update_action(prev_action)
+                logger.debug(f"Previous action updated: {prev_action}")
 
-        #     self.prompt_builder.update_observation(obs)
-        #     logger.debug("Observation updated")
+            self.prompt_builder.update_observation(obs)
+            logger.debug("Observation updated")
 
-        #     short_term_context = obs["text"]["short_term_context"]
-        #     long_term_context = obs["text"].get("long_term_context", "")
-        #     context = f"{short_term_context} {long_term_context}".strip()
-        #     logger.debug(f"Context: {context}")
+            short_term_context = obs["text"]["short_term_context"]
+            long_term_context = obs["text"].get("long_term_context", "")
+            context = f"{short_term_context} {long_term_context}".strip()
+            logger.debug(f"Context: {context}")
 
-        #     system_prompt = self.prompt_builder.system_prompt
+            # system_prompt = self.prompt_builder.system_prompt
+            system_prompt = refined_system_prompt
+            self.prompt_builder.update_instuction_prompt(system_prompt)
 
-        #     additional_tips = """
-        #     Additional tips:
-        #             - Yes or no can be responded with yn or n
-        #             - Anything which is not from the list of actions, is not a valid action
-        #             - You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
-        #             - Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later
-        #     """
+            additional_tips = """
+- Very Important: - Taking the stairs up on level 1 without Amulet of Yendor will quit the game and you will lose. Do not take the stairs up on level 1 without the Amulet of Yendor.
+- If you keep trying the same action and get the same message, change your action.
+- To interact with objects, you need to move into them first. For example, if you see a door in the east and you are currently in west of the dungeon,
+you must first move to reach the door and then interact with it.
+- Yes or no can be responded with yn or n
+- Anything which is not from the list of actions, is not a valid action
+- You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
+- Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later
+"""
 
-        #     system_prompt += additional_tips + context
+            system_prompt += additional_tips
 
-        #     rag_query_prompt = system_prompt + \
-        #     """
-        #     Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
-        #     Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?
-        #     Respond in the format:
-        #     Query:<query>
-        #     """
+            rag_query_prompt = system_prompt + context +\
+            """
+            Based on the game state above and the overall game instructions, generate a query that will help retrieve the most relevant strategic advice from the NetHack guide. 
+            Your query could be about, but not limited to:
 
-        #     logger.debug(f"RAG Query Prompt:{rag_query_prompt}")
+            - Key aspects of the current game state (e.g., inventory items, nearby threats, environmental features).
+            - Whether you need offensive, defensive, or general guidance.
+            - Specific details that will narrow down the retrieval to a useful topic.
 
-        #     # Track RAG query tokens
-        #     rag_response = self.client.generate([Message(role="user", content=rag_query_prompt)])
-        #     total_input_tokens += rag_response.input_tokens
-        #     total_output_tokens += rag_response.output_tokens
+            Your query must be a short phrase (8–10 words) that summarizes the primary strategic decision. Do not include multiple questions or detailed game state descriptions.
+
+            For example:
+            - "Effective defensive tactics with limited weapons near staircase"
+            - "Best potion usage against nearby goblins in early game"
+
+            Please output your query in the following format:
+            Query: <Your detailed query>
+            """
+            # """
+            # Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
+            # Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?
+            # Respond in the format:
+            # Query:<query>
+            # """
+
+            logger.debug(f"RAG Query Prompt:{rag_query_prompt}")
+
+            # Track RAG query tokens
+            rag_response = self.client.generate([Message(role="user", content=rag_query_prompt)])
+            total_input_tokens += rag_response.input_tokens
+            total_output_tokens += rag_response.output_tokens
             
-        #     rag_query = rag_response.completion
-        #     rag_query = rag_query.split("Query:")[1].strip()
+            rag_query = rag_response.completion
+            rag_query = rag_query.split("Query:")[1].strip()
 
-        #     logger.info(f"RAG query: {rag_query}")
+            logger.info(f"RAG query: {rag_query}")
 
-        #     rag_docs = self.rag.search(rag_query)
-        #     rag_context = "\n".join([doc for doc, _ in rag_docs])
+            rag_docs = self.rag.search(rag_query)
+            rag_context = "\n".join([doc for doc, _ in rag_docs])
 
-        #     logger.debug(f"RAG context: {rag_context}")
+            rag_context_summary = f"""
+            Given the current state context , summarize the most relevant information for a NetHack player that they can 
+            use to make a decision. From the context, extract the all the key information and then 
+            summarize the below rag results in a concise manner. Make sure that the rag summary is relevant for the current state context.
+            Make sure that you clearly mention the Dungeon Level (Dlvl:) and Experience (Xp:) from the context.
 
-        #     rag_usage_prompt = system_prompt + context + \
-        #     f"""
-        #     Below is the retrieved context from the RAG database. Use this information to help you make a decision.
-        #     {rag_context}
-        #     """
+            Current State context:
+            {context}
 
-        #     self.prompt_builder.update_instruction_prompt(rag_usage_prompt)
+            RAG Results:
+            {rag_context}
 
-        #     cot_instructions = """
-        #                         Given the retrieved context, think step-by-step to what will help progress towards the goal.
-        #                         Then, you must choose exactly one of the listed actions and output it strictly in the following format:
+            Your final output should be in the following format, do not add anything else before or after the format:
+            Current State Summary:<summary>
 
-        #                         <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
+            Strategy Guidance:<guidance>
 
-        #                         Replace YOUR_CHOSEN_ACTION with the chosen action.
+            Possible Decisions:
+            <decision1>
+            <decision2>
+            <decision3>
+            """
+
+            rag_summary = self.client.generate([Message(role="user", content=rag_context_summary)])
+            rag_summary = rag_summary.completion
+
+            logger.debug(f"RAG context: {rag_context}")
+
+            rag_usage_prompt = system_prompt + long_term_context +\
+            f"""
+Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+{rag_summary}
+            """
+
+            # cot_instructions = """
+            #                     Given the retrieved context, think step-by-step to what will help progress towards the goal.
+            #                     Then, you must choose exactly one of the listed actions and output it strictly in the following format:
+
+            #                     <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
+
+            #                     Replace YOUR_CHOSEN_ACTION with the chosen action.
                                 
-        #                         You should first output the action in the format <|ACTION|>action<|END|>. After this,
-        #                         you should output a one sentence reasoning for the action.
-        #                         """.strip()
+            #                     You should first output the action in the format <|ACTION|>action<|END|>. After this,
+            #                     you should output a one sentence reasoning for the action.
+            #                     """.strip()
             
-        #     # Track CoT reasoning tokens
-        #     messages = self.prompt_builder.get_prompt()
-        #     messages[-1].content += "\n\n" + cot_instructions
-        #     cot_reasoning = self.client.generate(messages)
-        #     total_input_tokens += cot_reasoning.input_tokens
-        #     total_output_tokens += cot_reasoning.output_tokens
+            cot_instructions = """Instructions for Decision Making:
+You have been provided with:
+- The overall game description and allowed actions.
+- The current game state.
+- Additional strategic advice retrieved from the RAG documents.
 
-        #     final_answer = self._extract_final_answer(cot_reasoning)
+Please follow these steps:
+1. Review the complete game state and the retrieved tips.
+2. Analyze the situation, considering risks, opportunities, and any immediate threats.
+3. Decide on the best possible action from the allowed action list.
+4. Output your chosen action using the strict format below, followed by a brief one-sentence explanation of your reasoning.
 
-        #     end_time = time.time()
-        #     memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # MB
-        #     logger.info(f"""
-        #     Performance metrics:
-        #     - Time taken: {end_time - start_time:.2f}s
-        #     - Memory usage: {memory_usage:.2f}MB
-        #     - RAG context size: {len(rag_context)} chars
-        #     - Total input tokens: {total_input_tokens}
-        #     - Total output tokens: {total_output_tokens}
-        #     - Total tokens: {total_input_tokens + total_output_tokens}
-        #     """)
+Output format:
+<|ACTION|>chosen_action<|END|>
+Reasoning: [Your one-sentence explanation]
 
-        #     gc.collect()
+Important:
+- Choose exactly one action from the allowed list.
+- Ensure that the action exactly matches one of the allowed action phrases."""
 
-        #     return final_answer
+            messages = rag_usage_prompt + "\n\n" + cot_instructions
+            logger.info(f"Final Prompt: {messages}")
+            
+            self.prompt_builder.update_
+
+            cot_reasoning = self.client.generate([Message(role="user", content=messages)])
+            
+            total_input_tokens += cot_reasoning.input_tokens
+            total_output_tokens += cot_reasoning.output_tokens
+            logger.info(f"COT reasoning: {cot_reasoning.completion}")
+
+            final_answer = self._extract_final_answer(cot_reasoning)
+
+            end_time = time.time()
+            memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # MB
+            logger.info(f"""
+            Performance metrics:
+            - Time taken: {end_time - start_time:.2f}s
+            - Memory usage: {memory_usage:.2f}MB
+            - RAG context size: {len(rag_context)} chars
+            - Total input tokens: {total_input_tokens}
+            - Total output tokens: {total_output_tokens}
+            - Total tokens: {total_input_tokens + total_output_tokens}
+            """)
+
+            gc.collect()
+
+            return final_answer
             
 
-        # except Exception as e:
-        #     logger.error(f"Error in act(): {str(e)}", exc_info=True)
-        #     # Return a safe default response in case of error
-        #     return self.client.generate([Message(role="user", content="Output a single valid action in the format <|ACTION|>action<|END|>.")])
+        except Exception as e:
+            logger.error(f"Error in act(): {str(e)}", exc_info=True)
+            # Return a safe default response in case of error
+            return self.client.generate([Message(role="user", content="Output a single valid action in the format <|ACTION|>action<|END|>.")])
 
     def _extract_final_answer(self, reasoning):
         """Extract the final action from the chain-of-thought reasoning response.
