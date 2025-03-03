@@ -198,11 +198,29 @@ def _process_json_item(item, path="", min_length=50):
     
     return chunks
 
+def load_documents(path):
+        """Load and parse documents from XML or TXT files.
+
+        Args:
+            path (str): Path to the document file.
+
+        Returns:
+            list: List of document contents.
+
+        Raises:
+            ValueError: If the file extension is not supported.
+        """
+        if path.endswith('.xml'):
+            return parse_xml(path)
+        elif path.endswith('.json'):
+            return parse_json(path)
+        else:
+            raise ValueError(f"Unsupported document format: {path}")
 class RAG:
     def __init__(self, config):
         """Initialize RAG with configuration."""
         self.config = config
-        self.model = None
+        self.model = SentenceTransformer(config.rag.model_name)
         self.index = None
         self.faiss_index = None
         self.passage_embeddings = None
@@ -213,14 +231,16 @@ class RAG:
         # Determine device once at initialization
         self.device = 'cuda' if torch.cuda.is_available() and self.config.rag.device == 'cuda' else 'cpu'
         logger.info(f"RAG will use device: {self.device}")
-    
-    def _ensure_initialized(self):
-        """Lazy initialization of model."""
-        if self.model is None:
-            logger.info(f"Initializing SentenceTransformer model on {self.device}")
-            self.model = SentenceTransformer(self.config.rag.model_name)
-            if self.device == 'cuda':
+
+        if self.device == 'cuda':
                 self.model = self.model.to(self.device)
+
+        if config.rag.enabled:
+            logger.info("RAG enabled, loading documents and building index...")
+            documents = load_documents(config.rag.documents_path)
+            self.build_index(documents)
+        else:
+            logger.info("RAG is disabled, skipping index building")
 
     def _load_from_cache(self, cache_base):
         """Attempt to load index and embeddings from cache."""
@@ -254,7 +274,6 @@ class RAG:
         """Build search index for passages."""
         start_time = time.time()
         logger.info(f"Building index for {len(passages)} passages")
-        self._ensure_initialized()
         
         # Create cache identifier
         model_hash = hashlib.md5(self.config.rag.model_name.encode('utf-8')).hexdigest()[:8]
@@ -415,8 +434,6 @@ class RAG:
 
     def search(self, query):
         """Search for relevant passages."""
-        # self._ensure_initialized()
-        
         if not query.strip():
             return []
             

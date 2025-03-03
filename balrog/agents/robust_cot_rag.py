@@ -3,9 +3,15 @@ import re
 import logging
 from balrog.agents.base import BaseAgent
 from balrog.client import LLMClientWrapper
+from balrog.agents.utils.rag import RAG
 from balrog.prompt_builder.history import Message
 from balrog.environments.nle.base import NLELanguageWrapper
 from nle.nethack import USEFUL_ACTIONS
+
+import time
+import psutil
+import gc
+
 logger = logging.getLogger(__name__)
 
 all_nle_action_map = NLELanguageWrapper.all_nle_action_map
@@ -112,7 +118,7 @@ action_strings = ",\n".join(f"{action}: {description}" for action, description i
 class RobustCoTRAGAgent(BaseAgent):
     """An agent that performs actions using chain-of-thought reasoning with RAG-enabled retrieval."""
 
-    def __init__(self, client_factory: LLMClientWrapper, prompt_builder, rag_instance, config):
+    def __init__(self, client_factory: LLMClientWrapper, prompt_builder, config):
         """Initialize the RobustCoTRAGAgent with a client, prompt builder, RAG instance, and configuration.
 
         Args:
@@ -123,10 +129,8 @@ class RobustCoTRAGAgent(BaseAgent):
         """
         super().__init__(client_factory, prompt_builder)
         self.client = client_factory()
-        self.rag = rag_instance
+        self.rag = RAG(config)
         self.remember_cot = config.agent.remember_cot
-        self.last_context = None
-        self.query_count = 0  # Track how many times we've queried the same context
         logger.info("RobustCoTRAGAgent initialized")
 
     def act(self, obs, prev_action=None):
@@ -139,6 +143,7 @@ class RobustCoTRAGAgent(BaseAgent):
         Returns:
             LLMResponse: The response containing the final selected action.
         """
+        start_time = time.time()
         try:
             if prev_action:
                 self.prompt_builder.update_action(prev_action)
@@ -225,14 +230,23 @@ class RobustCoTRAGAgent(BaseAgent):
             
             messages = self.prompt_builder.get_prompt()
             messages[-1].content += "\n\n" + cot_instructions
-
             logger.info(f"COT Prompt: {messages}")
 
             cot_reasoning = self.client.generate(messages)
-
             logger.info(f"COT reasoning: {cot_reasoning}")
 
             final_answer = self._extract_final_answer(cot_reasoning)
+
+            end_time = time.time()
+            memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # MB
+            logger.info(f"""
+            Performance metrics:
+            - Time taken: {end_time - start_time:.2f}s
+            - Memory usage: {memory_usage:.2f}MB
+            - RAG context size: {len(rag_context)} chars
+            """)
+
+            gc.collect()
 
             return final_answer
             

@@ -31,42 +31,6 @@ class AgentFactory:
             config (omegaconf.DictConfig): Configuration object containing settings for the agent and client.
         """
         self.config = config
-        self.rag_config = None
-        if hasattr(self.config, 'rag') and hasattr(self.config.rag, 'enabled') and self.config.rag.enabled:
-            self.rag_config = self.config
-            # Pre-load documents to avoid multiple loads
-            self.documents = self.load_documents(self.config.rag.documents_path)
-
-    def _create_rag_instance(self):
-        """Create a new RAG instance when needed."""
-        if not self.rag_config:
-            raise ValueError("RAG configuration not initialized")
-            
-        logger.info(f"Creating new RAG instance with device: {self.rag_config.rag.device}")
-        rag_instance = RAG(self.rag_config)
-        # Build index using pre-loaded documents
-        rag_instance.build_index(self.documents)
-        # rag_instance.build_index()
-        return rag_instance
-
-    def load_documents(self, path):
-        """Load and parse documents from XML or TXT files.
-
-        Args:
-            path (str): Path to the document file.
-
-        Returns:
-            list: List of document contents.
-
-        Raises:
-            ValueError: If the file extension is not supported.
-        """
-        if path.endswith('.xml'):
-            return parse_xml(path)
-        elif path.endswith('.json'):
-            return parse_json(path)
-        else:
-            raise ValueError(f"Unsupported document format: {path}")
 
     def create_agent(self):
         """Create an agent instance based on the configuration.
@@ -88,18 +52,8 @@ class AgentFactory:
             "few_shot": lambda: FewShotAgent(client_factory, prompt_builder, self.config.agent.max_icl_history),
             "robust_naive": lambda: RobustNaiveAgent(client_factory, prompt_builder),
             "robust_cot": lambda: RobustCoTAgent(client_factory, prompt_builder, config=self.config),
-            # "naive_rag": lambda: RAGNaiveAgent(client_factory, prompt_builder, self.rag_instance)
-            "naive_rag": lambda: NaiveRAGAgent(
-                client_factory, 
-                prompt_builder, 
-                self._create_rag_instance()  # Create new RAG instance for each agent
-            ),
-            "robust_cot_rag": lambda: RobustCoTRAGAgent(
-                client_factory, 
-                prompt_builder, 
-                self._create_rag_instance(),  # Create new RAG instance for each agent
-                self.config
-            )
+            "naive_rag": lambda: NaiveRAGAgent(client_factory, prompt_builder),
+            "robust_cot_rag": lambda: RobustCoTRAGAgent(client_factory,prompt_builder,config=self.config)
         }
 
         agent_type = self.config.agent.type
