@@ -125,6 +125,8 @@ class RobustCoTRAGAgent(BaseAgent):
         self.client = client_factory()
         self.rag = rag_instance
         self.remember_cot = config.agent.remember_cot
+        self.last_context = None
+        self.query_count = 0  # Track how many times we've queried the same context
         logger.info("RobustCoTRAGAgent initialized")
 
     def act(self, obs, prev_action=None):
@@ -150,10 +152,90 @@ class RobustCoTRAGAgent(BaseAgent):
             # long_term = obs["text"].get("long_term_context", "")
             # query = f"{short_term} {long_term}".strip()
 
-            query = obs["text"]["short_term_context"]
+            context = obs["text"]["short_term_context"]
             # query = obs["text"].get("long_term_context", "")
+
+            # dungeon_level_match = re.search(r"Dlvl:(\d+)", context)
+            # xp_level_match = re.search(r"Xp:(\d+)", context)
             
-            logger.info(f"Generated query: {query[:100]}...")  # Log first 100 chars of query
+            # current_dungeon_level = dungeon_level_match.group(1) if dungeon_level_match else "unknown"
+            # current_xp_level = xp_level_match.group(1) if xp_level_match else "unknown"
+            
+            # # Extract HP information
+            # hp_match = re.search(r"HP:(\d+)\((\d+)\)", context)
+            # current_hp = hp_match.group(1) if hp_match else None
+            # max_hp = hp_match.group(2) if hp_match else None
+            
+            # Reset query count if context changed
+            if self.last_context != context:
+                self.query_count = 0
+                self.last_context = context
+            else:
+                self.query_count += 1
+
+            # Extract key information from context
+            inventory_items = re.findall(r"[a-zA-Z]\s-\s([^\n]+)", context)
+            visible_items = re.findall(r"You see here ([^\n]+)", context)
+            monsters = re.findall(r"You see ([^.]+)\.", context)
+            
+            # Define different query templates based on query count
+            query_templates = [
+                # Combat and monsters
+                f"""QUESTION: {' '.join(monsters)} combat strategy attributes weaknesses""",
+                
+                # Item identification and usage
+                f"""QUESTION: {' '.join(inventory_items + visible_items)} uses effects benefits""",
+                
+                # Equipment and inventory optimization
+                f"""QUESTION: optimal equipment loadout {' '.join(inventory_items)}""",
+                
+                # Dungeon features and navigation
+                """QUESTION: dungeon features corridors doors traps navigation""",
+                
+                # Survival and status management
+                """QUESTION: HP management healing recovery survival tactics"""
+
+                # Exploration and discovery
+                """QUESTION: explore new areas discover hidden paths progress"""
+            ]
+            
+            current_template = query_templates[self.query_count % len(query_templates)]
+            
+            interim_query = f"""
+            Based on the current game state: {context}
+
+            Generate a SHORT, FOCUSED search query (2-4 keywords) related to:
+            {current_template}
+
+            Focus on SPECIFIC ITEMS, MONSTERS, or FEATURES currently visible.
+            DO NOT ask questions - use keywords only.
+            
+            Previous queries focused on: {', '.join(query_templates[:(self.query_count % len(query_templates))])}
+            
+            Reply in the form of: QUESTION: <keywords>
+            """.strip()
+
+            # """{context}\n\n
+            # Asses the current situation properly. There is an available RAG document store that has all the information about the game NetHack.
+            # Given the situation, ask a short question that you think will help you learn more about the game, inventory items, monsters or anything
+            # that will help you make a decision. Your question should not be more than 4-5 words. Your question should be a question that you think will help you make a decision.
+            # Your question should not ask about the general game mechanics."""
+
+
+            # interim_query = f"""You are currently on dungeon level {current_dungeon_level} and have {current_xp_level} experience points. Your goal is to 
+            # maximize your dungeon level and experience points. To do so, you must explore the dungeons, fight monsters, and collect items. Examine the current game state, 
+            # including your inventory, position, and any visible threats or opportunities, you can ask a question to a large document store to get more information about the dungeon and the actions you should perform. Knowing all this,
+            # create a short query to retrive the most relevant information from the document store. Your query should leverage your current observations and inventory to 
+            # get the most relevant information that you can use immediately and help you plan for the future. The query should be pinpointed and not
+            # general in nature.
+            # """
+
+
+            query = self.client.generate([Message(role="user", content=interim_query)])
+            query = query.completion
+            query = re.search(r"QUESTION: (.*)", query)
+            query = query.group(1) if query else ""
+            logger.info(f"Generated RAG query: {query[:100]}...")  # Log first 100 chars of query
 
             try:
                 # Retrieve relevant documents using RAG
@@ -161,16 +243,24 @@ class RobustCoTRAGAgent(BaseAgent):
                 logger.info(f"Retrieved {len(retrieved_docs)} documents")
                 
                 processed_docs = [doc for doc, _ in retrieved_docs]
-                logger.info(f"Processed {len(processed_docs)} relevant documents")
-                # self.prompt_builder.update_retrieved_docs(processed_docs)
-
-                ## Show only the first 500 characters of the content
-                # processed_text = "\n".join(
-                #     [f"Title: {doc[0]}\nContent: {doc[1][:500]}" for doc in processed_docs]
-                # )
-                # self.prompt_builder.update_retrieved_docs(processed_text)
-
                 self.prompt_builder.update_retrieved_docs(processed_docs)
+                logger.info(f"Processed {len(processed_docs)} relevant documents")
+                # refine_prompt = f"""
+                # For the prompt: {query}
+                # The retrieved documents are:
+                # {processed_docs}
+                # Summarize the retrieved documents in a concise manner so that it can be used by a game 
+                # player to make decisions. Reply in the form of: SUMMARY: <summary>
+                # """
+                # processed_rag = self.client.generate([Message(role="user", content=refine_prompt)])
+                # processed_rag = processed_rag.completion
+                # logger.debug(f"Raw processed_rag output: {repr(processed_rag)}")
+                
+                # # Extract summary if it exists
+                # summary_match = re.search(r"SUMMARY:\s*(.*)", processed_rag)
+                # processed_rag = summary_match.group(1).strip() if summary_match else processed_rag.strip()
+                # processed_rag = [processed_rag]
+                # self.prompt_builder.update_retrieved_docs(processed_rag)
 
             except Exception as e:
                 logger.error(f"Error during RAG retrieval: {str(e)}")
@@ -182,19 +272,18 @@ class RobustCoTRAGAgent(BaseAgent):
 
             # Combined instructions: RAG context + chain of thought + strict output format
             cot_rag_instructions = f"""
-                                Use the retrieved context to inform your decision. It's mentioned in the content in the "Relevant Context from RAG:" section.
+                                Use the retrieved context to inform your decision. It's mentioned in the content in the "Relevant Context from RAG:" section. The goal is to
+                                explore the dungeon, kill monsters and survive. This can be measured by the dungeon level and the experience points.
 
-                                1. **Analyze the Situation**: Examine the current game state, including your inventory, position, and any visible threats or opportunities.
+                                1. The retrieved context might not be totally accurate. Use your own understanding along with the retrieved context to make a decision.
 
-                                2. **Use the retrieved context to inform your decision**: The retrieved documents provide insights into the game's environment and potential actions.
+                                2. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
 
-                                3. **Plan for the future**: The final goal is achieved by intermediary steps. Plan to achieve the final goal by taking a series of steps. But at one time, you can only take one action. So only show the next action in the plan.
+                                3. **Decide on an Action**: Choose the best course of action based on the analysis and context and final goal of the plan.
 
-                                4. **Decide on an Action**: Choose the best course of action based on the analysis and context and final goal of the plan.
+                                4. **Yes/No**: If the action is a yes/no question, you must output yn or n.
 
-                                5. **Yes/No**: If the action is a yes/no question, you must output yn or n.
-
-                                6. **Output the Action**: You must output the action strictly in the format:
+                                5. **Output the Action**: You must output the action strictly in the format:
 
                                 <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
 
@@ -209,7 +298,6 @@ class RobustCoTRAGAgent(BaseAgent):
 
                                 Important tips:
                                 - When executing an action, the message will give you the result of the action. Make sure to read the message carefully to understand the result of the action and if the action was successful.
-                                - Any stairs will lead to a new level. Do not confine yourself to only going up or down. Use the stairs to explore other levels regardless of the direction.
                                 - Unexplored areas on the map are dark and will not have any ascii characters. These areas can be explored by moving in that direction. If you are in such an area,
                                 and can't move in one direction, try to move in another direction. When you explore a path, you will see ascii # characters on the map.
                                 - Walls are marked with an underscore "_" horizontally and a pipe "|" vertically. If through a set of walls you see a space, it means you can move through that space.
@@ -218,6 +306,7 @@ class RobustCoTRAGAgent(BaseAgent):
                                 if there is a door far west, you must first move west and then open the door.
                                 - Eating while satiated will lead to choking and death. Do not eat when satiated.
                                 """.strip()
+            # - Any stairs will lead to a new level. Do not confine yourself to only going up or down. Use the stairs to explore other levels regardless of the direction.
 
             if messages and messages[-1].role == "user":
                 messages[-1].content += "\n\n" + cot_rag_instructions

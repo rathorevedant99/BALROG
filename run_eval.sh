@@ -22,42 +22,41 @@
 #   rag.device=cuda \
 #   agent.remember_cot=True
 
-python eval.py \
-  agent.type=robust_cot_rag \
-  agent.max_history=8 \
-  agent.remember_cot=True \
-  agent.max_cot_history=4 \
-  eval.num_workers=8 \
-  eval.num_episodes.nle=4 \
-  client.client_name=openai \
-  client.model_id=gpt-4o-mini \
-  rag.enabled=True \
-  rag.model_name=sentence-transformers/all-mpnet-base-v2 \
-  rag.documents_path=local/data/nethackwiki_current.xml \
-  rag.device=cuda
+# python eval.py \
+#   agent.type=robust_cot_rag \
+#   agent.max_history=8 \
+#   agent.remember_cot=True \
+#   agent.max_cot_history=4 \
+#   eval.num_workers=8 \
+#   eval.num_episodes.nle=4 \
+#   client.client_name=openai \
+#   client.model_id=gpt-4o-mini \
+#   rag.enabled=True \
+#   rag.model_name=sentence-transformers/all-mpnet-base-v2 \
+#   rag.documents_path=local/data/nethackwiki_current.xml \
+#   rag.device=cuda
   
 
 
 # vllm serve deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B --port 8081 --gpu-memory-utilization 0.3
 
 
-python eval.py \
-  agent.type=robust_cot_rag \
-  agent.max_history=8 \
-  agent.remember_cot=True \
-  eval.num_workers=32 \
-  client.client_name=openai \
-  client.model_id=gpt-4o-mini \
-  rag.enabled=True \
-  rag.device=cuda
+# python eval.py \
+#   agent.type=robust_cot_rag \
+#   agent.remember_cot=True \
+#   agent.max_cot_history=8 \
+#   eval.num_workers=32 \
+#   client.client_name=openai \
+#   client.model_id=gpt-4o-mini \
+#   rag.enabled=True \
+#   rag.device=cuda
   
   python eval.py \
   agent.type=robust_cot_rag \
-  agent.max_history=8 \
   agent.remember_cot=True \
-  eval.num_workers=16 \
-  envs.names=minihack \
+  agent.max_cot_history=2 \
+  eval.num_workers=7 \
   client.client_name=gemini \
-  client.model_id=gemini-2.0-flash \
+  client.model_id=gemini-1.5-flash \
   rag.enabled=True \
   rag.device=cpu
