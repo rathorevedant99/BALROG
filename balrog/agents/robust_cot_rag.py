@@ -187,30 +187,34 @@ class RobustCoTRAGAgent(BaseAgent):
             self.prompt_builder.update_observation(obs)
             logger.debug("Observation updated")
 
+            messages = self.prompt_builder.get_prompt()
+
             short_term_context = obs["text"]["short_term_context"]
             long_term_context = obs["text"].get("long_term_context", "")
             context = f"{short_term_context} {long_term_context}".strip()
+            # context = f"{short_term_context}".strip()
             logger.debug(f"Context: {context}")
 
-            # system_prompt = self.prompt_builder.system_prompt
-            system_prompt = refined_system_prompt
-            self.prompt_builder.update_instruction_prompt(system_prompt)
+            system_prompt = self.prompt_builder.system_prompt
+#             system_prompt = refined_system_prompt
+#             self.prompt_builder.update_instruction_prompt(system_prompt)
 
-            additional_tips = """
-- Very Important: - Taking the stairs up on level 1 without Amulet of Yendor will quit the game and you will lose. Do not take the stairs up on level 1 without the Amulet of Yendor.
-- If you keep trying the same action and get the same message, change your action.
-- To interact with objects, you need to move into them first. For example, if you see a door in the east and you are currently in west of the dungeon,
-you must first move to reach the door and then interact with it.
-- Yes or no can be responded with yn or n
-- Anything which is not from the list of actions, is not a valid action
-- You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
-- Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later
-"""
+#             additional_tips = """
+# - Very Important: - Taking the stairs up on level 1 without Amulet of Yendor will quit the game and you will lose. Do not take the stairs up on level 1 without the Amulet of Yendor.
+# - If you keep trying the same action and get the same message, change your action.
+# - To interact with objects, you need to move into them first. For example, if you see a door in the east and you are currently in west of the dungeon,
+# you must first move to reach the door and then interact with it.
+# - Yes or no can be responded with yn or n
+# - Anything which is not from the list of actions, is not a valid action
+# - You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
+# - Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later
+# """
 
-            system_prompt += additional_tips
+            # system_prompt += additional_tips
+            
+            query_message = copy.deepcopy(messages)
 
-            rag_query_prompt = system_prompt + context +\
-            """
+            rag_query_prompt ="""
             Based on the game state above and the overall game instructions, generate a query that will help retrieve the most relevant strategic advice from the NetHack guide. 
             Your query could be about, but not limited to:
 
@@ -218,14 +222,14 @@ you must first move to reach the door and then interact with it.
             - Whether you need offensive, defensive, or general guidance.
             - Specific details that will narrow down the retrieval to a useful topic.
 
-            Your query must be a short phrase (8–10 words) that summarizes the primary strategic decision. Do not include multiple questions or detailed game state descriptions.
+            Your query must be a short phrase (6–8 words) that summarizes the primary strategic decision. Do not include multiple questions or detailed game state descriptions.
 
             For example:
-            - "Effective defensive tactics with limited weapons near staircase"
-            - "Best potion usage against nearby goblins in early game"
+            - "Effective defensive tactics, limited weapons, staircase"
+            - "Best potion usage, goblins, early game"
 
             Please output your query in the following format:
-            Query: <Your detailed query>
+            Query: <query>
             """
             # """
             # Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
@@ -233,11 +237,13 @@ you must first move to reach the door and then interact with it.
             # Respond in the format:
             # Query:<query>
             # """
+            if messages and messages[-1].role == "user":
+                query_message[-1].content += "\n\n" + rag_query_prompt
 
             logger.debug(f"RAG Query Prompt:{rag_query_prompt}")
 
             # Track RAG query tokens
-            rag_response = self.client.generate([Message(role="user", content=rag_query_prompt)])
+            rag_response = self.client.generate(query_message)
             total_input_tokens += rag_response.input_tokens
             total_output_tokens += rag_response.output_tokens
             
@@ -249,77 +255,79 @@ you must first move to reach the door and then interact with it.
             rag_docs = self.rag.search(rag_query)
             rag_context = "\n".join([doc for doc, _ in rag_docs])
 
-            rag_context_summary = f"""
-            Given the current state context , summarize the most relevant information for a NetHack player that they can 
-            use to make a decision. From the context, extract the all the key information and then 
-            summarize the below rag results in a concise manner. Make sure that the rag summary is relevant for the current state context.
-            Make sure that you clearly mention the Dungeon Level (Dlvl:) and Experience (Xp:) from the context.
+            # rag_context_summary = f"""Given the current state context and the retrieved RAG results, summarize the most relevant information for a NetHack player that they can 
+            # use to make a decision.
+            # - If you see a direction such as northnortheast, it means you should first move in the north direction and then the northeast direction. Give the
+            # direction in the order of the first direction and then the second direction.
+            # Example: context observation: gold piece near westsouthwest -> move west and then southwest
+            # Current State context:
+            # {context}
 
-            Current State context:
-            {context}
+            # RAG Results:
+            # {rag_context}
 
-            RAG Results:
-            {rag_context}
+            # Extract the most useful information from the retrieved RAG results.
 
-            Your final output should be in the following format, do not add anything else before or after the format:
-            Current State Summary:<summary>
+            # Your final output should be in the following format, do not add anything else before or after the format. Output Format:
+            # Current State Summary:<summary in less than 20 words>
 
-            Strategy Guidance:<guidance>
+            # Retrieved Summarized RAG Results:
+            # - <Most relevant information from the retrieved RAG result 1>
+            # - <Most relevant information from the retrieved RAG result 2>
+            # - <...so on for all retrieved RAG results...>
 
-            Possible Decisions:
-            <decision1>
-            <decision2>
-            <decision3>
-            """
+            # """
+            # f"""
+            # Given the current state context and the retrieved RAG results, summarize the most relevant information for a NetHack player that they can 
+            # use to make a decision. 
+            # - If you see a direction such as northnortheast, it means you should first move in the north direction and then the northeast direction. Give the
+            # direction in the order of the first direction and then the second direction.
+            # Example: context observation: gold piece near westsouthwest -> optimal action: move west and then southwest
+            # Current State context:
+            # {context}
 
-            rag_summary = self.client.generate([Message(role="user", content=rag_context_summary)])
-            rag_summary = rag_summary.completion
+            # RAG Results:
+            # {rag_context}
 
-            logger.debug(f"RAG context: {rag_context}")
-            logger.info(f"RAG summary: {rag_summary}")
+            # Give the best possible action in the context of the current state and the retrieved RAG results.
+
+            # Your final output should be in the following format, do not add anything else before or after the format. Output Format:
+            # Current State Summary:<summary in less than 20 words>
+
+            # Strategy Guidance:
+            # - Best Strategy: <best possible action description>
+            # - Decent Strategy: <decent action description>
+            # - Bare Minimum Strategy: <worst possible action description>
+            # """
+            # Optimal Action:<action description>
+
+            # rag_summary = self.client.generate([Message(role="user", content=rag_context_summary)])
+            # rag_summary = rag_summary.completion
+
+            logger.info(f"RAG Query: {rag_query}")
+            logger.info(f"RAG context: {rag_context}")
+            # logger.info(f"RAG summary: {rag_summary}")
 
             rag_usage_prompt = system_prompt + long_term_context +\
-            f"""
-Below is the retrieved context from the RAG database. Use this information to help you make a decision.
-{rag_summary}
-            """
-
-            # cot_instructions = """
-            #                     Given the retrieved context, think step-by-step to what will help progress towards the goal.
-            #                     Then, you must choose exactly one of the listed actions and output it strictly in the following format:
-
-            #                     <|ACTION|>YOUR_CHOSEN_ACTION<|END|>
-
-            #                     Replace YOUR_CHOSEN_ACTION with the chosen action.
-                                
-            #                     You should first output the action in the format <|ACTION|>action<|END|>. After this,
-            #                     you should output a one sentence reasoning for the action.
-            #                     """.strip()
+                f"""
+ Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+ {rag_context}
+             """
+#             f"""
+# Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+# {rag_summary}
+#             """
             
-            cot_instructions = """Instructions for Decision Making:
-You have been provided with:
-- The overall game description and allowed actions.
-- The current game state.
-- Additional strategic advice retrieved from the RAG documents.
+            cot_instructions = """First, think about the best course of action.
+Then, you must choose exactly one of the listed actions and output it strictly in the following format:
 
-Please follow these steps:
-1. Review the complete game state and the retrieved tips.
-2. Analyze the situation, considering risks, opportunities, and any immediate threats.
-3. Decide on the best possible action from the allowed action list.
-4. Output your chosen action using the strict format below, followed by a brief one-sentence explanation of your reasoning.
+<|ACTION|>YOUR_CHOSEN_ACTION<|END|>
 
-Output format:
-<|ACTION|>chosen_action<|END|>
-Reasoning: [Your one-sentence explanation]
-
-Important:
-- Choose exactly one action from the allowed list.
-- Ensure that the action exactly matches one of the allowed action phrases."""
+Explain your action choice in not more than 15 words.
+"""
 
             messages = rag_usage_prompt + "\n\n" + cot_instructions
-            logger.debug(f"Final Prompt: {messages}")
-            
-            # self.prompt_builder.update_
+            logger.info(f"Final Prompt: {messages}")
 
             cot_reasoning = self.client.generate([Message(role="user", content=messages)])
             

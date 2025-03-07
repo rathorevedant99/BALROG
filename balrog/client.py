@@ -189,12 +189,25 @@ class OpenAIWrapper(LLMClientWrapper):
         converted_messages = self.convert_messages(messages)
 
         def api_call():
-            return self.client.chat.completions.create(
-                messages=converted_messages,
-                model=self.model_id,
-                temperature=self.client_kwargs.get("temperature", 0.5),
-                max_tokens=self.client_kwargs.get("max_tokens", 1024),
-            )
+            params = {
+                "messages": converted_messages,
+                "model": self.model_id,
+            }
+            
+            # Add model-specific parameters
+            if "o3-mini" in self.model_id:
+                params["max_completion_tokens"] = self.client_kwargs.get("max_tokens", 1024)
+            else:
+                params["max_tokens"] = self.client_kwargs.get("max_tokens", 1024)
+                params["temperature"] = self.client_kwargs.get("temperature", 0.5)
+            
+            return self.client.chat.completions.create(**params)
+            # return self.client.chat.completions.create(
+            #     messages=converted_messages,
+            #     model=self.model_id,
+            #     temperature=self.client_kwargs.get("temperature", 0.5),
+            #     max_tokens=self.client_kwargs.get("max_tokens", 1024),
+            # )
 
         response = self.execute_with_retries(api_call)
 

@@ -4,6 +4,9 @@ import re
 from balrog.agents.base import BaseAgent
 from balrog.client import LLMClientWrapper
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class RobustCoTAgent(BaseAgent):
     """An agent that performs actions using a chain-of-thought reasoning process."""
@@ -48,6 +51,8 @@ Replace YOUR_CHOSEN_ACTION with the chosen action.
 
         # Add the updated instructions to the last message
         messages[-1].content += "\n\n" + cot_instructions
+
+        logger.info(f"Messages: {messages}")
 
         # Generate the CoT reasoning
         cot_reasoning = self.client.generate(messages)
