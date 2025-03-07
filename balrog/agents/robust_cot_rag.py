@@ -231,12 +231,7 @@ class RobustCoTRAGAgent(BaseAgent):
             Please output your query in the following format:
             Query: <query>
             """
-            # """
-            # Look at the inventory and map properly. Now imagine that you have a information rich document for the game NetHack that has information about game mechanics and optimal strategies. The document also has information about the characters in game and the their abilities. It also has information about the weapons or objects that you find in the game.
-            # Output a concise 4-5 words sentence of what you would like to get from the document. For example: "fountain", or "defeat a fox?
-            # Respond in the format:
-            # Query:<query>
-            # """
+
             if messages and messages[-1].role == "user":
                 query_message[-1].content += "\n\n" + rag_query_prompt
 
@@ -255,28 +250,28 @@ class RobustCoTRAGAgent(BaseAgent):
             rag_docs = self.rag.search(rag_query)
             rag_context = "\n".join([doc for doc, _ in rag_docs])
 
-            # rag_context_summary = f"""Given the current state context and the retrieved RAG results, summarize the most relevant information for a NetHack player that they can 
-            # use to make a decision.
-            # - If you see a direction such as northnortheast, it means you should first move in the north direction and then the northeast direction. Give the
-            # direction in the order of the first direction and then the second direction.
-            # Example: context observation: gold piece near westsouthwest -> move west and then southwest
-            # Current State context:
-            # {context}
+            rag_context_summary = f"""Given the current state context and the retrieved RAG results, summarize the most relevant information for a NetHack player that they can 
+            use to make a decision.
+            - If you see a direction such as northnortheast, it means you should first move in the north direction and then the northeast direction. Give the
+            direction in the order of the first direction and then the second direction.
+            Example: context observation: gold piece near westsouthwest -> move west and then southwest
+            Current State context:
+            {context}
 
-            # RAG Results:
-            # {rag_context}
+            RAG Results:
+            {rag_context}
 
-            # Extract the most useful information from the retrieved RAG results.
+            Extract the most useful information from the retrieved RAG results.
 
-            # Your final output should be in the following format, do not add anything else before or after the format. Output Format:
-            # Current State Summary:<summary in less than 20 words>
+            Your final output should be in the following format, do not add anything else before or after the format. Output Format:
+            Current State Summary:<summary in less than 20 words>
 
-            # Retrieved Summarized RAG Results:
-            # - <Most relevant information from the retrieved RAG result 1>
-            # - <Most relevant information from the retrieved RAG result 2>
-            # - <...so on for all retrieved RAG results...>
+            Retrieved Summarized RAG Results:
+            - <Most relevant information from the retrieved RAG result 1>
+            - <Most relevant information from the retrieved RAG result 2>
+            - <...so on for all retrieved RAG results...>
 
-            # """
+            """
             # f"""
             # Given the current state context and the retrieved RAG results, summarize the most relevant information for a NetHack player that they can 
             # use to make a decision. 
@@ -301,22 +296,22 @@ class RobustCoTRAGAgent(BaseAgent):
             # """
             # Optimal Action:<action description>
 
-            # rag_summary = self.client.generate([Message(role="user", content=rag_context_summary)])
-            # rag_summary = rag_summary.completion
+            rag_summary = self.client.generate([Message(role="user", content=rag_context_summary)])
+            rag_summary = rag_summary.completion
 
             logger.info(f"RAG Query: {rag_query}")
-            logger.info(f"RAG context: {rag_context}")
-            # logger.info(f"RAG summary: {rag_summary}")
+            # logger.info(f"RAG context: {rag_context}")
+            logger.info(f"RAG summary: {rag_summary}")
 
             rag_usage_prompt = system_prompt + long_term_context +\
-                f"""
- Below is the retrieved context from the RAG database. Use this information to help you make a decision.
- {rag_context}
-             """
-#             f"""
-# Below is the retrieved context from the RAG database. Use this information to help you make a decision.
-# {rag_summary}
-#             """
+            f"""
+Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+{rag_summary}
+            """
+#                 f"""
+#  Below is the retrieved context from the RAG database. Use this information to help you make a decision.
+#  {rag_context}
+#              """
             
             cot_instructions = """First, think about the best course of action.
 Then, you must choose exactly one of the listed actions and output it strictly in the following format:
