@@ -196,21 +196,6 @@ class RobustCoTRAGAgent(BaseAgent):
             logger.debug(f"Context: {context}")
 
             system_prompt = self.prompt_builder.system_prompt
-#             system_prompt = refined_system_prompt
-#             self.prompt_builder.update_instruction_prompt(system_prompt)
-
-#             additional_tips = """
-# - Very Important: - Taking the stairs up on level 1 without Amulet of Yendor will quit the game and you will lose. Do not take the stairs up on level 1 without the Amulet of Yendor.
-# - If you keep trying the same action and get the same message, change your action.
-# - To interact with objects, you need to move into them first. For example, if you see a door in the east and you are currently in west of the dungeon,
-# you must first move to reach the door and then interact with it.
-# - Yes or no can be responded with yn or n
-# - Anything which is not from the list of actions, is not a valid action
-# - You should devise a strategy basis your current state and the retrieved context. For example, items that are to be used at different levels, or different monsters that you can defeat
-# - Planning for future is very helpful. For example, if you need to defeat a monster, you can plan for that by saving items or weapons that you can use later
-# """
-
-            # system_prompt += additional_tips
             
             query_message = copy.deepcopy(messages)
 
@@ -272,29 +257,6 @@ class RobustCoTRAGAgent(BaseAgent):
             - <...so on for all retrieved RAG results...>
 
             """
-            # f"""
-            # Given the current state context and the retrieved RAG results, summarize the most relevant information for a NetHack player that they can 
-            # use to make a decision. 
-            # - If you see a direction such as northnortheast, it means you should first move in the north direction and then the northeast direction. Give the
-            # direction in the order of the first direction and then the second direction.
-            # Example: context observation: gold piece near westsouthwest -> optimal action: move west and then southwest
-            # Current State context:
-            # {context}
-
-            # RAG Results:
-            # {rag_context}
-
-            # Give the best possible action in the context of the current state and the retrieved RAG results.
-
-            # Your final output should be in the following format, do not add anything else before or after the format. Output Format:
-            # Current State Summary:<summary in less than 20 words>
-
-            # Strategy Guidance:
-            # - Best Strategy: <best possible action description>
-            # - Decent Strategy: <decent action description>
-            # - Bare Minimum Strategy: <worst possible action description>
-            # """
-            # Optimal Action:<action description>
 
             rag_summary = self.client.generate([Message(role="user", content=rag_context_summary)])
             rag_summary = rag_summary.completion
@@ -303,15 +265,15 @@ class RobustCoTRAGAgent(BaseAgent):
             # logger.info(f"RAG context: {rag_context}")
             logger.info(f"RAG summary: {rag_summary}")
 
-            rag_usage_prompt = system_prompt + long_term_context +\
-            f"""
+            messages = self.prompt_builder.get_prompt()
+
+            rag_usage_prompt =f"""
 Below is the retrieved context from the RAG database. Use this information to help you make a decision.
 {rag_summary}
             """
-#                 f"""
-#  Below is the retrieved context from the RAG database. Use this information to help you make a decision.
-#  {rag_context}
-#              """
+
+            messages[-1].content += "\n\n" + rag_usage_prompt
+
             
             cot_instructions = """First, think about the best course of action.
 Then, you must choose exactly one of the listed actions and output it strictly in the following format:
@@ -321,10 +283,10 @@ Then, you must choose exactly one of the listed actions and output it strictly i
 Explain your action choice in not more than 15 words.
 """
 
-            messages = rag_usage_prompt + "\n\n" + cot_instructions
+            messages[-1].content += "\n\n" + cot_instructions
             logger.info(f"Final Prompt: {messages}")
 
-            cot_reasoning = self.client.generate([Message(role="user", content=messages)])
+            cot_reasoning = self.client.generate(messages)
             
             total_input_tokens += cot_reasoning.input_tokens
             total_output_tokens += cot_reasoning.output_tokens
