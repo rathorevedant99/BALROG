@@ -14,9 +14,9 @@
 python eval.py \
 agent.type=robust_cot_rag \
 agent.remember_cot=True \
-agent.max_cot_history=4 \
+agent.max_cot_history=2 \
 eval.num_workers=64 \
 client.client_name=gemini \
 client.model_id=gemini-2.0-flash \
 rag.enabled=True \
-rag.device=cuda
+rag.device=cpu
